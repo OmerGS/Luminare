@@ -1,3 +1,31 @@
-.venv
+.venv/
+
+
 poetry.lock
+
+
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Build / export
+exports/
+export/
+
+# Données locales / médias lourds (passez par LFS)
+assets/
+project/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.aac
+*.flac
