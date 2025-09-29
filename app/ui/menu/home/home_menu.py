@@ -17,8 +17,6 @@ class MainMenu(QWidget):
         # Titre (utilisation du composant Title)
         layout.addWidget(Title("🎬 Luminare"))
 
-        # Boutons (utilisation du composant MenuButton)
-        layout.addWidget(MenuButton("▶ Jouer", go_to_editor))
         layout.addWidget(MenuButton("🖊️ Éditeur", go_to_editor))
         layout.addWidget(MenuButton("❌ Quitter", self.close_app))
 
