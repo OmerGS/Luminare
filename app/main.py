@@ -1,46 +1,71 @@
-# app/main.py
-import sys
+# main.py (entrypoint racine)
+from __future__ import annotations
+import os
 from pathlib import Path
+import platform
+import sys
 
-# S'assurer que le répertoire racine est dans le sys.path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QStackedWidget
-from app.ui.menu.home.home_menu import MainMenu
-from app.ui.editor.editor import Editor
-from mvp_editor import main as render_project, project  # <-- on importe depuis mvp_editor.py
+def set_cwd_to_repo_root():
+    """Garantit que le process tourne à la racine du repo."""
+    root = Path(__file__).resolve().parent
+    if Path.cwd() != root:
+        os.chdir(root)
+    return root
 
-class MainWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Luminare")
-        self.resize(600, 400)
+def bootstrap_ffmpeg_on_path(root: Path):
+    """
+    Ajoute un FFmpeg portable au PATH si disponible sous vendor/ffmpeg.
+    (N'affecte rien si ffmpeg est déjà dans le PATH.)
+    """
+    system = platform.system().lower()
+    candidates = []
+    if system.startswith("win"):
+        candidates += [
+            root / "vendor" / "ffmpeg" / "windows" / "bin",
+            root / "vendor" / "ffmpeg" / "win64" / "bin",
+        ]
+    elif system == "darwin":
+        candidates += [root / "vendor" / "ffmpeg" / "macos" / "bin"]
+    else:
+        candidates += [root / "vendor" / "ffmpeg" / "linux" / "bin"]
 
-        # Création du QStackedWidget
-        self.stacked = QStackedWidget()
+    for p in candidates:
+        if p.exists():
+            os.environ["PATH"] = str(p) + os.pathsep + os.environ.get("PATH", "")
+            break
 
-        # Création des pages
-        self.main_menu = MainMenu(self.show_editor)
-        self.editor = Editor(self.show_main_menu)
+def ensure_cache_dirs(root: Path):
+    """Crée les répertoires de cache si absents."""
+    for d in [root / "cache", root / "cache" / "wave"]:
+        d.mkdir(parents=True, exist_ok=True)
 
-        # Ajout au QStackedWidget
-        self.stacked.addWidget(self.main_menu)  # index 0
-        self.stacked.addWidget(self.editor)     # index 1
+def quiet_qt_multimedia_logs():
+    """
+    Optionnel : rend le terminal plus propre.
+    Désactive les warnings verbeux de QtMultimedia/FFmpeg.
+    """
+    os.environ.setdefault(
+        "QT_LOGGING_RULES",
+        "qt.multimedia.ffmpeg.debug=false;qt.multimedia.ffmpeg.warning=false"
+    )
 
-        # Layout principal
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.stacked)
+def main():
+    root = set_cwd_to_repo_root()
+    bootstrap_ffmpeg_on_path(root)
+    ensure_cache_dirs(root)
+    quiet_qt_multimedia_logs()   # <- enlève si tu veux voir les logs Qt
 
-    def show_editor(self):
-        self.stacked.setCurrentWidget(self.editor)
+    from PySide6.QtWidgets import QApplication
+    from app.ui.main_window import MainWindow
 
-    def show_main_menu(self):
-        self.stacked.setCurrentWidget(self.main_menu)
+    app = QApplication(sys.argv)
+    w = MainWindow()
+    w.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.showMaximized()
-    sys.exit(app.exec())
+    main()
