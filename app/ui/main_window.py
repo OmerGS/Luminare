@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.video_view import VideoView
-from app.ui.player_controls import PlayerControls
-from app.ui.timeline import TimelineScroll          # <-- assure-toi que le fichier s'appelle timeline.py
+from app.ui.editor.player_controls import PlayerControls
+from app.ui.editor.timeline import TimelineScroll          # <-- assure-toi que le fichier s'appelle timeline.py
 from core.media_controller import MediaController
 from engine.exporter import Exporter
 
