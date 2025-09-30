@@ -1,8 +1,9 @@
 # app/ui/menu/home/home_menu.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from app.ui import styles
 from app.ui.components.title import Title
 from app.ui.components.menu_button import MenuButton
+from app.ui.components.project_button import ProjectButton
 
 class MainMenu(QWidget):
     def __init__(self, go_to_editor):
@@ -10,19 +11,32 @@ class MainMenu(QWidget):
 
         self.setStyleSheet(styles.WINDOW_STYLE)
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(30)
-        layout.setContentsMargins(50, 50, 50, 50)
+        mainLayout = QHBoxLayout(self)
 
+        layoutCreate = QVBoxLayout(self)
+        layoutCreate.setSpacing(30)
+        layoutCreate.setContentsMargins(50, 50, 50, 50)
+
+        mainLayout.addLayout(layoutCreate)
         # Titre (utilisation du composant Title)
-        layout.addWidget(Title("🎬 Luminare"))
+        layoutCreate.addWidget(Title("🎬 Luminare"))
 
         # Boutons (utilisation du composant MenuButton)
-        layout.addWidget(MenuButton("▶ Jouer", go_to_editor))
-        layout.addWidget(MenuButton("🖊️ Éditeur", go_to_editor))
-        layout.addWidget(MenuButton("❌ Quitter", self.close_app))
+        layoutCreate.addWidget(MenuButton("▶ Jouer", go_to_editor))
+        layoutCreate.addWidget(MenuButton("🖊️ Éditeur", go_to_editor))
+        layoutCreate.addWidget(MenuButton("❌ Quitter", self.close_app))
 
-        layout.addStretch()
+        #layoutCreate.addStretch()
+
+        layoutProject = QHBoxLayout(self)
+        layoutProject.addWidget(ProjectButton("Projet1", go_to_editor))
+        layoutProject.addWidget(ProjectButton("Projet2", go_to_editor))
+        layoutProject.addWidget(ProjectButton("Projet3", go_to_editor))
+        layoutProject.addWidget(ProjectButton("Projet4", go_to_editor))
+
+        layoutCreate.addLayout(layoutProject)
+
+        
 
     def close_app(self):
         from PySide6.QtWidgets import QApplication
