@@ -2,7 +2,6 @@
 from PySide6.QtCore import Qt, Signal, QSize, QRect
 from PySide6.QtGui import QPainter, QPen, QBrush
 from PySide6.QtWidgets import QWidget, QScrollArea
-import numpy as np
 
 class TimelineWidget(QWidget):
     seekRequested = Signal(int)
@@ -13,8 +12,7 @@ class TimelineWidget(QWidget):
         self._position_ms = 0
         self._px_per_sec = 80
         self._drag = False
-        self._wave_env = None         # np.ndarray shape [N] float32 (0..1)
-        self._wave_sps = 0            # samples par seconde pour l’enveloppe
+        self._overlays = []  # list of (start_sec, end_sec)
         self.setMinimumHeight(160)
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
@@ -33,9 +31,9 @@ class TimelineWidget(QWidget):
         self._px_per_sec = max(10, min(int(px_per_sec), 400))
         self._update_width(); self.update()
 
-    def set_waveform(self, env: np.ndarray, samples_per_second: int):
-        self._wave_env = env.astype(np.float32) if env is not None else None
-        self._wave_sps = int(samples_per_second or 0)
+    def set_overlays(self, items):
+        """items: list[(start_sec, end_sec)]"""
+        self._overlays = [(max(0.0, float(s)), max(0.0, float(e))) for s, e in items]
         self.update()
 
     # geometry
@@ -76,30 +74,17 @@ class TimelineWidget(QWidget):
         p.setPen(QPen(self.palette().mid().color(), 1, Qt.DashLine))
         p.drawRect(0, content_top, r.width()-1, content_h)
 
-        # ------- WAVeform (aire) -------
-        if self._wave_env is not None and self._wave_env.size and self._wave_sps > 0 and self._duration_ms > 0:
+        # lane overlays (barres)
+        if self._overlays:
             p.setPen(Qt.NoPen)
             p.setBrush(QBrush(self.palette().midlight()))
-            # mapping: 1 échantillon d'enveloppe = (1 / _wave_sps) seconde
-            sec_per_sample = 1.0 / float(self._wave_sps)
-            px_per_sample = self._px_per_sec * sec_per_sample
-            y_base = content_top + content_h // 2
-            amp = (content_h // 2) - 2
-
-            # Dessin en colonnes (rapide) : 1 rect par sample visible
-            # On borne à la zone visible (optimisation simple)
-            from_x = 0
-            to_x   = r.width()
-            first_i = max(0, int(from_x / px_per_sample) - 1)
-            last_i  = min(self._wave_env.size, int(to_x / px_per_sample) + 2)
-
-            for i in range(first_i, last_i):
-                x = int(i * px_per_sample)
-                v = float(self._wave_env[i])  # 0..1
-                h = int(v * amp)
-                if h <= 0: 
-                    continue
-                p.drawRect(QRect(x, y_base - h, max(1, int(px_per_sample)), h*2))
+            lane_h = max(12, content_h // 6)
+            lane_y = content_top + 6
+            for (s, e) in self._overlays:
+                if e < s: s, e = e, s
+                x1 = self._s_to_x(s); x2 = self._s_to_x(e)
+                w = max(2, x2 - x1)
+                p.drawRect(QRect(x1, lane_y, w, lane_h))
 
         # playhead
         x_ph = self._ms_to_x(self._position_ms)

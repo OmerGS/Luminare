@@ -58,6 +58,9 @@ class PlayerControls(QHBoxLayout):
     def _icon(self, std):
         from PySide6.QtWidgets import QStyle, QApplication
         return QApplication.style().standardIcon(std)
+    
+    def set_media(self, media):
+        self._media = media
 
     def attach(self, media_controller):
         self._media = media_controller
