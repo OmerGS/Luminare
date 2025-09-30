@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QM
 from app.ui.video_canvas import VideoCanvas               # ← nouveau
 from app.ui.player_controls import PlayerControls
 from app.ui.timeline import TimelineScroll
-from app.ui.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
