@@ -3,9 +3,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame
 
-from app.ui.video_canvas import VideoCanvas               # ← nouveau
-from app.ui.player_controls import PlayerControls
-from app.ui.timeline import TimelineScroll
+from ui.editor.video_canvas import VideoCanvas               # ← nouveau
+from ui.editor.player_controls import PlayerControls
+from ui.editor.timeline import TimelineScroll
+from ui.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter

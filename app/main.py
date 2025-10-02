@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import platform
 import sys
+from ui.editor.main_window import MainWindow
+
+
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -60,7 +63,7 @@ def main():
     quiet_qt_multimedia_logs()   # <- enlève si tu veux voir les logs Qt
 
     from PySide6.QtWidgets import QApplication
-    from app.ui.main_window import MainWindow
+    from app.ui.editor.main_window import MainWindow
 
     app = QApplication(sys.argv)
     w = MainWindow()
