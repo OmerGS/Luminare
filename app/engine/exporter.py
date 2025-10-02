@@ -1,11 +1,8 @@
+# engine/exporter.py
 from pathlib import Path
+from core.project import Project
 
 class Exporter:
-    """
-    Pont vers la pipeline d'export.
-    Pour l’instant, on réutilise mvp_editor.main(project_dict).
-    Tu pourras remplacer cette classe par ta vraie pipeline FFmpeg.
-    """
     def __init__(self):
         try:
             from mvp_editor import main as render_project
@@ -15,13 +12,11 @@ class Exporter:
 
     def export_quick(self, src_path: str, duration_ms: int) -> str:
         if not self._render:
-            raise RuntimeError("mvp_editor introuvable (engine/exporter.py).")
+            raise RuntimeError("mvp_editor introuvable.")
         out = Path("exports") / "output_gui.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
-
         seconds = max(1, int((duration_ms or 5000) / 1000))
-        seconds = min(5, seconds)  # petit export
-
+        seconds = min(5, seconds)
         project = {
             "clips": [{"path": src_path, "trim": (0, seconds)}],
             "resolution": (1920, 1080),
@@ -39,4 +34,38 @@ class Exporter:
             "audio_normalize": True
         }
         self._render(project)
+        return str(out)
+
+    def export_from_project(self, proj: Project, fallback_src: str) -> str:
+        if not self._render:
+            raise RuntimeError("mvp_editor introuvable.")
+        out = Path("exports") / "output_gui.mp4"
+        out.parent.mkdir(parents=True, exist_ok=True)
+
+        clips = []
+        if proj.clips:
+            for c in proj.clips:
+                clips.append({"path": c.path, "trim": (c.trim[0], c.trim[1])})
+        else:
+            clips = [{"path": fallback_src, "trim": (0, 5)}]
+
+        filters = {
+            "brightness": max(-1.0, min(1.0, proj.filters.brightness)),
+            "contrast":   max(0.0, min(3.0, proj.filters.contrast)),
+            "saturation": max(0.0, min(3.0, proj.filters.saturation)),
+            "vignette": bool(proj.filters.vignette),
+        }
+
+        text_overlays = [ov.__dict__ for ov in proj.text_overlays]
+
+        project_dict = {
+            "clips": clips,
+            "resolution": proj.resolution,
+            "filters": filters,
+            "text_overlays": text_overlays,
+            "output": str(out),
+            "fps": proj.fps,
+            "audio_normalize": True
+        }
+        self._render(project_dict)
         return str(out)

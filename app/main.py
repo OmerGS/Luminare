@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import platform
 import sys
+from ui.editor.main_window import MainWindow
+
+
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
