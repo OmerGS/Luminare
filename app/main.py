@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import platform
 import sys
-from ui.editor.main_window import MainWindow
 
 
 
@@ -20,10 +19,7 @@ def set_cwd_to_repo_root():
     return root
 
 def bootstrap_ffmpeg_on_path(root: Path):
-    """
-    Ajoute un FFmpeg portable au PATH si disponible sous vendor/ffmpeg.
-    (N'affecte rien si ffmpeg est déjà dans le PATH.)
-    """
+    """Ajoute un FFmpeg portable au PATH si disponible sous vendor/ffmpeg."""
     system = platform.system().lower()
     candidates = []
     if system.startswith("win"):
@@ -47,10 +43,7 @@ def ensure_cache_dirs(root: Path):
         d.mkdir(parents=True, exist_ok=True)
 
 def quiet_qt_multimedia_logs():
-    """
-    Optionnel : rend le terminal plus propre.
-    Désactive les warnings verbeux de QtMultimedia/FFmpeg.
-    """
+    """Optionnel : rend le terminal plus propre (désactive logs QtMultimedia)."""
     os.environ.setdefault(
         "QT_LOGGING_RULES",
         "qt.multimedia.ffmpeg.debug=false;qt.multimedia.ffmpeg.warning=false"
@@ -60,14 +53,41 @@ def main():
     root = set_cwd_to_repo_root()
     bootstrap_ffmpeg_on_path(root)
     ensure_cache_dirs(root)
-    quiet_qt_multimedia_logs()   # <- enlève si tu veux voir les logs Qt
+    quiet_qt_multimedia_logs()
 
-    from PySide6.QtWidgets import QApplication
-    from app.ui.editor.main_window import MainWindow
+    from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget, QVBoxLayout
+    from app.ui.menu.home.home_menu import MainMenu
+    from app.ui.editor.main_window import EditorWindow
 
     app = QApplication(sys.argv)
-    w = MainWindow()
-    w.show()
+
+    # StackedWidget pour gérer navigation menu <-> éditeur
+    stacked = QStackedWidget()
+
+    # Menu principal
+    def go_to_editor():
+        stacked.setCurrentWidget(editor)
+
+    main_menu = MainMenu(go_to_editor)
+
+    # Éditeur
+    def go_back_to_menu():
+        stacked.setCurrentWidget(main_menu)
+
+    editor = EditorWindow()
+
+    # Ajouter dans le stack
+    stacked.addWidget(main_menu)  # index 0
+    stacked.addWidget(editor)     # index 1
+    stacked.setCurrentWidget(main_menu)  # <- démarrage sur menu
+
+    # Fenêtre principale
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    layout.addWidget(stacked)
+    window.setWindowTitle("Luminare")
+    window.showMaximized()  # plein écran
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":

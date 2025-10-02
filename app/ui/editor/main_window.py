@@ -11,7 +11,7 @@ from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
 
-class MainWindow(QWidget):
+class EditorWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Luminare — Lecteur & Timeline")
