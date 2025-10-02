@@ -113,5 +113,8 @@ class MainWindow(QWidget):
         # push le project au canvas
         self.canvas.set_project(self.store.project())
         # et pousser info vers la timeline (barres d'overlay)
-        self.timeline.set_overlays([(ov.start, ov.end) for ov in self.store.project().text_overlays])
+        self.timeline.set_overlays([
+            {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
+            for ov in self.store.project().text_overlays
+        ])
         self.timeline.update()
