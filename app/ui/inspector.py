@@ -12,11 +12,12 @@ class Inspector(QWidget):
     titleTextChanged = Signal(str)
     setTitleStartRequested = Signal()  # utilise le playhead courant
     setTitleEndRequested = Signal()    # utilise le playhead courant
+    titlePositionChanged = Signal(float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(260)
-
+        self._current_overlay = None
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignTop)
 
@@ -66,7 +67,48 @@ class Inspector(QWidget):
 
         layout.addStretch(1)
 
+        # --- Position du titre sélectionné ---
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("Position du titre (normalisée)"))
+
+        pos_form = QFormLayout()
+        self.pos_x_spin = QDoubleSpinBox(); self.pos_x_spin.setRange(0.0, 1.0); self.pos_x_spin.setSingleStep(0.01)
+        self.pos_y_spin = QDoubleSpinBox(); self.pos_y_spin.setRange(0.0, 1.0); self.pos_y_spin.setSingleStep(0.01)
+
+        pos_form.addRow("X :", self.pos_x_spin)
+        pos_form.addRow("Y :", self.pos_y_spin)
+        layout.addLayout(pos_form)
+
+        # Connecte les spins
+        self.pos_x_spin.valueChanged.connect(self._on_pos_changed)
+        self.pos_y_spin.valueChanged.connect(self._on_pos_changed)
+
+
     def _emit_filters(self, *_):
         self.filtersChanged.emit(
             self.spin_b.value(), self.spin_c.value(), self.spin_s.value(), self.chk_v.isChecked()
         )
+
+        # --- NOUVEAU : appelée par le canvas ou le main window
+    def set_selected_overlay(self, ov):
+        """Mise à jour de l'inspector quand on sélectionne un titre."""
+        self._current_overlay = ov
+        if ov is None:
+            self.pos_x_spin.setEnabled(False)
+            self.pos_y_spin.setEnabled(False)
+            self.pos_x_spin.setValue(0.0)
+            self.pos_y_spin.setValue(0.0)
+            self.title_edit.setText("")
+        else:
+            self.pos_x_spin.setEnabled(True)
+            self.pos_y_spin.setEnabled(True)
+            self.pos_x_spin.setValue(getattr(ov, "x", 0.0))
+            self.pos_y_spin.setValue(getattr(ov, "y", 0.0))
+            self.title_edit.setText(getattr(ov, "text", ""))
+
+    def _on_pos_changed(self):
+        if self._current_overlay:
+            self._current_overlay.x = self.pos_x_spin.value()
+            self._current_overlay.y = self.pos_y_spin.value()
+            self.titlePositionChanged.emit(self._current_overlay.x, self._current_overlay.y)
+

@@ -66,6 +66,8 @@ class MainWindow(QWidget):
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
+        self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
+
 
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
