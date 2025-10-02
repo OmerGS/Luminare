@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import platform
 import sys
-from ui.editor.main_window import MainWindow
 
 
 
