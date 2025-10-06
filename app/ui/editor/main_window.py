@@ -10,6 +10,7 @@ from ui.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
+from ui.editor.importPanel import ImportPanel
 
 class EditorWindow(QWidget):
     def __init__(self):
@@ -22,31 +23,49 @@ class EditorWindow(QWidget):
         self.store = Store(self)
         self.exporter = Exporter()
 
+        
+
+        # ----- ImportPanel -----
+        self.import_panel = ImportPanel(add_to_timeline_callback=self._add_to_timeline)
+
         # centre vidéo (canvas)
         self.canvas = VideoCanvas()
         self.controls = PlayerControls()
         self.controls.set_media(self.media)
+
+        # timeline
         self.timeline_scroll = TimelineScroll(self)
         self.timeline = self.timeline_scroll.timeline
+
+        # inspector (droite)
         self.inspector = Inspector()
 
-        center = QVBoxLayout()
-        center.addWidget(self.canvas, stretch=5)
-        center.addLayout(self.controls)
-        sep = QFrame(); sep.setFrameShape(QFrame.HLine); center.addWidget(sep)
-        center.addWidget(self.timeline_scroll, stretch=2)
+        # ----- Layout principal -----
+        main_layout = QVBoxLayout(self)  # vertical principal
 
-        root = QHBoxLayout(self)
-        root.addLayout(center, stretch=1)
-        root.addWidget(self.inspector)
-        self.setLayout(root)
+        # Top row: ImportPanel | Video + Controls | Inspector
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(self.import_panel, stretch=1)  # ImportPanel à gauche
 
-        # Wiring vidéo (frames + playhead)
+        # Video + controls en vertical
+        video_layout = QVBoxLayout()
+        video_layout.addWidget(self.canvas, stretch=5)
+        video_layout.addLayout(self.controls)  # controls sous la vidéo
+        top_layout.addLayout(video_layout, stretch=1)
+
+        top_layout.addWidget(self.inspector, stretch=1)  # Inspector à droite
+        main_layout.addLayout(top_layout, stretch=1)
+
+        # Timeline en bas
+        main_layout.addWidget(self.timeline_scroll, stretch=1)
+
+        self.setLayout(main_layout)
+
+
+        # Wiring vidéo et timeline (inchangé)
         self.media.frameImageAvailable.connect(self.canvas.set_frame)
         self.media.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
-
-        # Wiring timeline / player
         self.timeline.seekRequested.connect(self.media.seek_ms)
         self.media.durationChanged.connect(self.timeline.set_duration)
         self.media.positionChanged.connect(self.timeline.set_position)
@@ -66,9 +85,6 @@ class EditorWindow(QWidget):
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
-        self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
-
-
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
 
@@ -120,3 +136,8 @@ class EditorWindow(QWidget):
             for ov in self.store.project().text_overlays
         ])
         self.timeline.update()
+
+    def _add_to_timeline(self, file_path):
+        """Ajoute le média importé directement à la timeline et au store."""
+        self.store.set_clip(file_path)
+        self.media.load(QUrl.fromLocalFile(file_path))
