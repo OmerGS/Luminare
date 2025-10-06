@@ -14,13 +14,7 @@ __pycache__/
 .idea/
 .DS_Store
 
-# Build / export
-exports/
-export/
-
 # Données locales / médias lourds (passez par LFS)
-assets/
-project/
 *.mp4
 *.mov
 *.mkv
