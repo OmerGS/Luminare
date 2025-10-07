@@ -20,6 +20,7 @@ class EditorWindow(QWidget):
         # back
         self.media = MediaController(self)
         self.store = Store(self)
+        self.store.start_auto_save(30000)  
         self.exporter = Exporter()
 
         # centre vidéo (canvas)

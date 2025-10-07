@@ -1,7 +1,7 @@
 # core/store.py
 from typing import Optional
-from PySide6.QtCore import QObject, Signal
-from .project import Project, Clip, TextOverlay, Filters
+from PySide6.QtCore import QObject, Signal, QTimer
+from core.project import Project, Clip, TextOverlay, Filters
 
 class Store(QObject):
     changed = Signal()              # state global changé
@@ -10,6 +10,7 @@ class Store(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._project = Project()
+        self._project = Project(name="Projet courant")  
 
     def project(self) -> Project:
         return self._project
@@ -54,3 +55,17 @@ class Store(QObject):
         if saturation is not None: f.saturation = float(saturation)
         if vignette is not None:   f.vignette = bool(vignette)
         self.changed.emit()
+
+    def start_auto_save(self, interval_ms: int = 30000):
+        """Démarre une sauvegarde automatique toutes les interval_ms millisecondes."""
+        self._auto_save_timer = QTimer(self)
+        self._auto_save_timer.timeout.connect(self._auto_save)
+        self._auto_save_timer.start(interval_ms)
+
+    def _auto_save(self):
+        from .save_system.project.save_api import ProjectAPI
+        try:
+            ProjectAPI.save(self._project, "auto_save.lmprj")
+            print("💾 Auto-save effectué")
+        except Exception as e:
+            print("❌ Auto-save échoué :", e)
