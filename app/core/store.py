@@ -9,8 +9,7 @@ class Store(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._project = Project()
-        self._project = Project(name="Projet courant")  
+        self._project = Project(name="Nouveau projet")
 
     def project(self) -> Project:
         return self._project
@@ -63,7 +62,7 @@ class Store(QObject):
         self._auto_save_timer.start(interval_ms)
 
     def _auto_save(self):
-        from .save_system.project.save_api import ProjectAPI
+        from core.save_system.save_api import ProjectAPI
         try:
             ProjectAPI.save(self._project, "auto_save.lmprj")
             print("💾 Auto-save effectué")

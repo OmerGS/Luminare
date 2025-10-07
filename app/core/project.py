@@ -30,6 +30,7 @@ class Clip:
 @dataclass
 class Project:
     name: str = "Nouveau projet"
+    version: str = "1.0.0"
     resolution: Tuple[int, int] = (1920, 1080)
     fps: float = 30.0
     clips: List[Clip] = field(default_factory=list)

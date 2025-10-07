@@ -10,19 +10,39 @@ def list_lmprj_files():
     return [f for f in os.listdir(save_dir) if f.endswith(".lmprj")]
 
 def display_project(proj):
-    """Affichage lisible du projet"""
+    """Affichage complet du projet"""
     print("\n=== Contenu du projet ===")
-    print(f"Nom du projet   : {proj.name}")
-    print(f"Résolution      : {proj.resolution[0]}x{proj.resolution[1]}")
-    print(f"FPS             : {proj.fps}")
-    print(f"Output          : {proj.output}")
-    print(f"Audio normalisé : {proj.audio_normalize}")
-    print(f"Nombre de clips : {len(proj.clips)}")
-    for i, clip in enumerate(proj.clips, 1):
-        print(f"  Clip {i} : {clip['path']} (trim {clip['trim'][0]} - {clip['trim'][1]})")
+    print(f"Nom du projet      : {proj.name}")
+    print(f"Version du projet  : {getattr(proj, 'version', 'inconnue')}")
+    print(f"Résolution         : {proj.resolution[0]}x{proj.resolution[1]}")
+    print(f"FPS                : {proj.fps}")
+    print(f"Output             : {proj.output}")
+    print(f"Audio normalisé    : {proj.audio_normalize}")
+
+    # Clips
+    print(f"\nClips ({len(proj.clips)}) :")
+    if proj.clips:
+        for i, clip in enumerate(proj.clips, 1):
+            print(f"  Clip {i} : {clip.path} (trim {clip.trim[0]} - {clip.trim[1]})")
+    else:
+        print("  Aucun clip trouvé.")
+
+    # Filters
+    f = proj.filters
+    print(f"\nFiltres : brightness={f.brightness}, contrast={f.contrast}, "
+          f"saturation={f.saturation}, vignette={f.vignette}")
+
+    # Text overlays
+    print(f"\nText Overlays ({len(proj.text_overlays)}) :")
+    if proj.text_overlays:
+        for i, ov in enumerate(proj.text_overlays, 1):
+            print(f"  Overlay {i}: '{ov.text}' [{ov.start}-{ov.end}s], "
+                  f"position=({ov.x},{ov.y}), fontsize={ov.fontsize}, color={ov.fontcolor}")
+    else:
+        print("  Aucun overlay trouvé.")
 
 if __name__ == "__main__":
-    # 🔹 Affiche le nombre total de projets et de clips
+    # 🔹 Affiche le nombre total de projets
     print(f"\nNombre total de projets : {ProjectAPI.get_save_count()}")
 
     # 🔹 Liste les projets disponibles
@@ -35,7 +55,7 @@ if __name__ == "__main__":
     for idx, filename in enumerate(files, 1):
         print(f"{idx}. {filename}")
 
-    # 🔹 Demande à l’utilisateur lequel charger
+    # 🔹 Choix du projet à charger
     while True:
         try:
             choice = int(input(f"\nChoisis un fichier à charger (1-{len(files)}): "))
@@ -48,9 +68,16 @@ if __name__ == "__main__":
 
     selected_file = files[choice - 1]
 
-    loaded_proj = ProjectAPI.load(selected_file)
+    # 🔹 Chargement du projet avec gestion des erreurs
+    try:
+        loaded_proj = ProjectAPI.load(selected_file)
+    except Exception as e:
+        print(f"❌ Impossible de charger le projet : {e}")
+        exit()
 
+    # 🔹 Affichage complet
     display_project(loaded_proj)
 
-    clip_count = ProjectAPI.get_clip_count(selected_file)
+    # 🔹 Nombre de clips
+    clip_count = len(loaded_proj.clips)
     print(f"\n📊 Ce projet contient {clip_count} clip(s).")
