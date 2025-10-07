@@ -22,7 +22,7 @@ class MainWindow(QWidget):
         self.stacked = QStackedWidget()
 
         # Création des pages
-        self.main_menu = MainMenu(self.show_editor)
+        self.main_menu = MainMenu(self.show_editor, self.show_editor, self.show_main_menu)
         self.editor = Editor(self.show_main_menu)
 
         # Ajout au QStackedWidget
