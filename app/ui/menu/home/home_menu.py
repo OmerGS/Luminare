@@ -6,7 +6,7 @@ from app.ui.components.menu_button import MenuButton
 from app.ui.components.project_button import ProjectButton
 
 class MainMenu(QWidget):
-    def __init__(self, go_to_editor, go_to_settings, go_to_home):
+    def __init__(self, go_to_editor, go_to_settings, go_to_home, vids):
         super().__init__()
 
         self.setStyleSheet(styles.WINDOW_STYLE)
@@ -35,10 +35,11 @@ class MainMenu(QWidget):
         layoutCreate.addStretch()
 
         layoutProject = QGridLayout(self)
-        layoutProject.addWidget(ProjectButton("Projet1", go_to_editor), 0, 0)
-        layoutProject.addWidget(ProjectButton("Projet2", go_to_editor), 0,1)
-        layoutProject.addWidget(ProjectButton("Projet3", go_to_editor), 1,0)
-        layoutProject.addWidget(ProjectButton("Projet4", go_to_editor), 1,1)
+        cols = 5
+        for i, text in enumerate(vids):
+            row = i // cols
+            col = i % cols
+            layoutProject.addWidget(ProjectButton(text, go_to_editor), row, col)
 
         layoutCreate.addLayout(layoutProject)
 
