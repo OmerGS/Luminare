@@ -1,7 +1,7 @@
 # core/store.py
 from typing import Optional
 from PySide6.QtCore import QObject, Signal
-from .project import Project, Clip, TextOverlay, Filters
+from .project import Project, Clip, TextOverlay, Filters, ImageOverlay 
 
 class Store(QObject):
     changed = Signal()              # state global changé
@@ -54,3 +54,16 @@ class Store(QObject):
         if saturation is not None: f.saturation = float(saturation)
         if vignette is not None:   f.vignette = bool(vignette)
         self.changed.emit()
+
+    def add_image_overlay(self, path:str, start:float, duration:float=3.0):
+        ov = ImageOverlay(path=path, start=start, end=start+duration)
+        self._project.image_overlays.append(ov)
+        self.overlayChanged.emit()
+        return ov
+    
+    def remove_last_image_overlay(self):
+        if self._project.image_overlays:
+            self._project.image_overlays.pop()
+            self.overlayChanged.emit()
+
+    def project(self): return self._project

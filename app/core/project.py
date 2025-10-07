@@ -2,6 +2,19 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 
+
+@dataclass
+class ImageOverlay:
+    path: str
+    # position et taille normalisées (0..1) dans le cadre vidéo
+    x: float = 0.5
+    y: float = 0.5
+    w: float = 0.25      # largeur relative
+    h: float = 0.25      # hauteur relative
+    start: float = 0.0
+    end: float = 3.0
+    opacity: float = 1.0
+
 @dataclass
 class TextOverlay:
     text: str = "Titre"
@@ -35,3 +48,4 @@ class Project:
     clips: List[Clip] = field(default_factory=list)
     text_overlays: List[TextOverlay] = field(default_factory=list)
     filters: Filters = field(default_factory=Filters)
+    image_overlays: List[ImageOverlay] = field(default_factory=list)

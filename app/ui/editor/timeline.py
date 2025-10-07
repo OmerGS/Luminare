@@ -1,10 +1,15 @@
 # app/ui/timeline.py
-from PySide6.QtCore import Qt, Signal, QSize, QRect
-from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QCursor
+from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtGui import (QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent)
 from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip
+from ui.components.assets_panel import MIME_IMAGE_ASSET
+import json
+
 
 class TimelineWidget(QWidget):
-    seekRequested = Signal(int)
+    # Signals
+    seekRequested = Signal(int)           # ms
+    imageDropped = Signal(str, float)     # path, start_seconds   <<< NEW
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -12,31 +17,36 @@ class TimelineWidget(QWidget):
         self._position_ms = 0
         self._px_per_sec = 80
         self._drag = False
-        self._overlays = []  # list of (start_sec, end_sec)
+
+        self._overlays = []     # [{s,e,label}]  titres
+        self._image_items = []  # [{s,e,label}]  images
+
         self.setMinimumHeight(160)
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
+        self.setAcceptDrops(True)  # DnD depuis AssetsPanel
         self._update_width()
 
-    # API
+    # ---------- Public API ----------
     def set_duration(self, ms: int):
         self._duration_ms = max(0, ms)
-        self._update_width(); self.update()
+        self._update_width()
+        self.update()
 
     def set_position(self, ms: int):
         self._position_ms = max(0, min(ms, self._duration_ms))
-        if not self._drag: self.update()
+        if not self._drag:
+            self.update()
 
     def set_zoom(self, px_per_sec: int):
         self._px_per_sec = max(10, min(int(px_per_sec), 400))
-        self._update_width(); self.update()
+        self._update_width()
+        self.update()
 
     def set_overlays(self, items):
         """
-        items peut être :
-          - [(start, end)]                     # rétro-compat
-          - [(start, end, label)]             # tuple avec label
-          - [{"start":..., "end":..., "label": "..."}]
+        items: [(start, end)], [(start, end, label)] ou
+               [{"start":..., "end":..., "label":"..."}]
         """
         norm = []
         for it in items:
@@ -54,22 +64,45 @@ class TimelineWidget(QWidget):
         self._overlays = norm
         self.update()
 
-    # geometry
+    def set_images(self, items):
+        """items: [{"start": float, "end": float, "label": str}]"""
+        norm = []
+        for it in items:
+            s = float(it.get("start", 0.0))
+            e = float(it.get("end", 0.0))
+            label = str(it.get("label", "Image"))
+            norm.append({"s": max(0.0, s), "e": max(0.0, e), "label": label})
+        self._image_items = norm
+        self.update()
+
+    # ---------- Geometry / convert ----------
     def _update_width(self):
         secs = max(1, int(self._duration_ms / 1000))
         width = max(1000, secs * self._px_per_sec)
         self.setFixedSize(width, 160)
 
-    def sizeHint(self): return self.size()
+    def sizeHint(self):  # noqa
+        return self.size()
 
-    # convert
-    def _s_to_x(self, s: float) -> int: return int(s * self._px_per_sec)
-    def _ms_to_x(self, ms: int) -> int: return self._s_to_x(ms / 1000.0)
+    def _s_to_x(self, s: float) -> int:
+        return int(s * self._px_per_sec)
+
+    def _ms_to_x(self, ms: int) -> int:
+        return self._s_to_x(ms / 1000.0)
+
     def _x_to_ms(self, x: int) -> int:
-        s = max(0.0, x / float(self._px_per_sec)); return int(s * 1000)
+        s = max(0.0, x / float(self._px_per_sec))
+        return int(s * 1000)
 
+    def _x_to_s(self, x: int) -> float:
+        return max(0.0, x / float(self._px_per_sec))
+
+    # ---------- Paint ----------
     def paintEvent(self, _):
-        p = QPainter(self); r = self.rect()
+        p = QPainter(self)
+        r = self.rect()
+
+        # fond alterné
         p.fillRect(r, QBrush(self.palette().base()))
         alt = QBrush(self.palette().alternateBase())
         for i in range(0, r.width(), self._px_per_sec):
@@ -80,21 +113,22 @@ class TimelineWidget(QWidget):
         p.setPen(QPen(self.palette().mid().color(), 1))
         p.drawLine(0, 30, r.right(), 30)
         p.setPen(self.palette().text().color())
-        for s in range(int(self._duration_ms/1000)+1):
+        for s in range(int(self._duration_ms / 1000) + 1):
             x = self._s_to_x(s)
             p.drawLine(x, 30, x, 18)
             step = max(1, self._px_per_sec // 4)
             for k in range(1, 4):
-                p.drawLine(x + k*step, 30, x + k*step, 24)
+                p.drawLine(x + k * step, 30, x + k * step, 24)
             if s % 5 == 0:
                 p.drawText(x + 3, 14, f"{s}s")
 
         # zone contenu
-        content_top = 40; content_h = r.height() - content_top - 10
+        content_top = 40
+        content_h = r.height() - content_top - 10
         p.setPen(QPen(self.palette().mid().color(), 1, Qt.DashLine))
-        p.drawRect(0, content_top, r.width()-1, content_h)
+        p.drawRect(0, content_top, r.width() - 1, content_h)
 
-        # --- lane overlays (barres + labels) ---
+        # lane Titres
         if self._overlays:
             lane_h = max(16, content_h // 6)
             lane_y = content_top + 6
@@ -104,18 +138,39 @@ class TimelineWidget(QWidget):
                 x1 = self._s_to_x(s); x2 = self._s_to_x(e)
                 w = max(2, x2 - x1)
 
-                # bande
                 p.setPen(Qt.NoPen)
                 p.setBrush(QBrush(self.palette().midlight()))
                 p.drawRect(QRect(x1, lane_y, w, lane_h))
 
-                # label (ellipsisé si trop long)
-                label_rect = QRect(x1+4, lane_y, max(0, w-8), lane_h)
+                # label
+                label_rect = QRect(x1 + 4, lane_y, max(0, w - 8), lane_h)
                 if label_rect.width() > 12:
                     fm = QFontMetrics(p.font())
                     text = fm.elidedText(ov["label"], Qt.ElideRight, label_rect.width())
                     p.setPen(self.palette().text().color())
-                    baseline = label_rect.y() + (label_rect.height() + fm.ascent() - fm.descent())//2
+                    baseline = label_rect.y() + (label_rect.height() + fm.ascent() - fm.descent()) // 2
+                    p.drawText(label_rect.x(), baseline, text)
+
+        # lane Images (sous la lane Titres)
+        if self._image_items:
+            lane_h = max(16, content_h // 6)
+            lane_y = content_top + 6 + lane_h + 4
+            for it in self._image_items:
+                s, e = it["s"], it["e"]
+                if e < s: s, e = e, s
+                x1 = self._s_to_x(s); x2 = self._s_to_x(e)
+                w = max(2, x2 - x1)
+
+                p.setPen(Qt.NoPen)
+                p.setBrush(QBrush(self.palette().highlight().color().lighter(150)))
+                p.drawRect(QRect(x1, lane_y, w, lane_h))
+
+                label_rect = QRect(x1 + 4, lane_y, max(0, w - 8), lane_h)
+                if label_rect.width() > 12:
+                    fm = QFontMetrics(p.font())
+                    text = fm.elidedText(it["label"], Qt.ElideRight, label_rect.width())
+                    p.setPen(self.palette().text().color())
+                    baseline = label_rect.y() + (label_rect.height() + fm.ascent() - fm.descent()) // 2
                     p.drawText(label_rect.x(), baseline, text)
 
         # playhead
@@ -123,53 +178,69 @@ class TimelineWidget(QWidget):
         p.setPen(QPen(Qt.red, 2))
         p.drawLine(x_ph, 0, x_ph, r.height())
 
-    # (ajoute un petit tooltip pratique)
+    # ---------- Interaction ----------
     def mouseMoveEvent(self, e):
         pos_x = int(e.position().x())
         s_at = pos_x / float(self._px_per_sec)
 
-        # position globale de la souris  (Qt6) ; fallback Qt5
         try:
-            pos_global = e.globalPosition().toPoint()
+            pos_global = e.globalPosition().toPoint()  # Qt6
         except AttributeError:
-            pos_global = e.globalPos()
+            pos_global = e.globalPos()                 # fallback Qt5
 
         for ov in self._overlays:
             s, e_ = min(ov["s"], ov["e"]), max(ov["s"], ov["e"])
             if s <= s_at <= e_:
-                QToolTip.showText(
-                    pos_global,
-                    f"{ov['label']}  [{s:.2f}s → {e_:.2f}s]",
-                    self
-                )
+                QToolTip.showText(pos_global, f"{ov['label']}  [{s:.2f}s → {e_:.2f}s]", self)
                 break
         else:
             QToolTip.hideText()
 
         super().mouseMoveEvent(e)
 
-
-
-    # interaction
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self._drag = True
             ms = self._x_to_ms(int(e.position().x()))
-            self._position_ms = ms; self.seekRequested.emit(ms); self.update()
+            self._position_ms = ms
+            self.seekRequested.emit(ms)
+            self.update()
             e.accept()
-        else: super().mousePressEvent(e)
+        else:
+            super().mousePressEvent(e)
 
     def mouseReleaseEvent(self, e):
         if self._drag and e.button() == Qt.LeftButton:
-            self._drag = False; e.accept()
-        else: super().mouseReleaseEvent(e)
+            self._drag = False
+            e.accept()
+        else:
+            super().mouseReleaseEvent(e)
 
     def wheelEvent(self, e):
         if e.modifiers() & Qt.ControlModifier:
             delta = e.angleDelta().y()
             self.set_zoom(self._px_per_sec + (10 if delta > 0 else -10))
             e.accept()
-        else: super().wheelEvent(e)
+        else:
+            super().wheelEvent(e)
+
+    # ---------- Drag & Drop d'images ----------
+    def dragEnterEvent(self, e: QDragEnterEvent):
+        if e.mimeData().hasFormat(MIME_IMAGE_ASSET):
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dropEvent(self, e: QDropEvent):
+        if e.mimeData().hasFormat(MIME_IMAGE_ASSET):
+            data = json.loads(bytes(e.mimeData().data(MIME_IMAGE_ASSET)).decode("utf-8"))
+            path = data.get("path")
+            start_s = self._x_to_s(int(e.position().x()))
+            self.imageDropped.emit(path, start_s)  # <<< laisse le MainWindow gérer la création
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
 
 class TimelineScroll(QScrollArea):
     def __init__(self, parent=None):

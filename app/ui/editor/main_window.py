@@ -1,15 +1,16 @@
-# app/ui/main_window.py (extraits essentiels)
+# app/ui/main_window.py
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame, QSizePolicy
 
-from ui.editor.video_canvas import VideoCanvas               # ← nouveau
+from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
 from ui.editor.timeline import TimelineScroll
 from ui.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
+from ui.components.assets_panel import AssetsPanel
 
 class EditorWindow(QWidget):
     def __init__(self):
@@ -22,29 +23,49 @@ class EditorWindow(QWidget):
         self.store = Store(self)
         self.exporter = Exporter()
 
-        # centre vidéo (canvas)
+        # widgets UI
         self.canvas = VideoCanvas()
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
         self.controls = PlayerControls()
         self.controls.set_media(self.media)
+
         self.timeline_scroll = TimelineScroll(self)
         self.timeline = self.timeline_scroll.timeline
-        self.inspector = Inspector()
+        self.timeline.imageDropped.connect(self.on_timeline_drop_image)
+        
+
+
+        self.inspector = Inspector(self)          # ← parent explicite
+        self.inspector.setMinimumWidth(260)
+        self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+
+        self.assets = AssetsPanel()               # panneau médias (gauche)
+
+        root = QHBoxLayout(self)                 
+        root.setContentsMargins(6, 6, 6, 6)
+        root.setSpacing(6)
 
         center = QVBoxLayout()
+        center.setContentsMargins(0, 0, 0, 0)
+        center.setSpacing(6)
+
         center.addWidget(self.canvas, stretch=5)
         center.addLayout(self.controls)
-        sep = QFrame(); sep.setFrameShape(QFrame.HLine); center.addWidget(sep)
+        sep = QFrame(); sep.setFrameShape(QFrame.HLine)
+        center.addWidget(sep)
         center.addWidget(self.timeline_scroll, stretch=2)
 
-        root = QHBoxLayout(self)
-        root.addLayout(center, stretch=1)
-        root.addWidget(self.inspector)
-        self.setLayout(root)
+        root.addWidget(self.assets, 0)            # ← colonne gauche
+        root.addLayout(center, 1)                 # ← colonne centrale
+        root.addWidget(self.inspector, 0)         # ← colonne droite
+
 
         # Wiring vidéo (frames + playhead)
         self.media.frameImageAvailable.connect(self.canvas.set_frame)
         self.media.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
+        self.assets.addImageRequested.connect(self._add_image_at_playhead)
 
         # Wiring timeline / player
         self.timeline.seekRequested.connect(self.media.seek_ms)
@@ -68,21 +89,21 @@ class EditorWindow(QWidget):
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
         self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
 
-
+        # Store → UI
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
 
-    # ----- actions -----
+    # ----- actions & helpers identiques à ta version -----
     def _open_file(self):
         start_dir = str(Path.cwd() / "assets")
         f, _ = QFileDialog.getOpenFileName(
             self, "Ouvrir une vidéo", start_dir,
             "Vidéos (*.mp4 *.mov *.mkv *.avi);;Tous les fichiers (*.*)"
         )
-        if not f: return
+        if not f:
+            return
         self.media.load(QUrl.fromLocalFile(f))
         self.media.play()
-        # provisoire: clip unique avec une durée par défaut (ajustable après)
         self.store.set_clip(f, duration_s=5.0)
 
     def _export(self):
@@ -111,12 +132,29 @@ class EditorWindow(QWidget):
         self.store.set_last_overlay_end(ms / 1000.0)
         self._refresh_overlay()
 
-    def _refresh_overlay(self):
-        # push le project au canvas
+    def on_timeline_drop_image(self, path: str, start_s: float):
+        ov = self.store.add_image_overlay(path, start_s, duration=3.0)
+        from pathlib import Path as _P
+        self.timeline.set_images([
+            {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
+            for o in self.store.project().image_overlays
+        ])
         self.canvas.set_project(self.store.project())
-        # et pousser info vers la timeline (barres d'overlay)
+        self.media.seek_ms(int(start_s * 1000))
+
+    def _add_image_at_playhead(self, path: str):
+        start_s = self.media.position_ms() / 1000.0
+        self.on_timeline_drop_image(path, start_s)
+
+    def _refresh_overlay(self):
+        self.canvas.set_project(self.store.project())
+        from pathlib import Path as _P
         self.timeline.set_overlays([
             {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
             for ov in self.store.project().text_overlays
         ])
-        self.timeline.update()
+        if hasattr(self.timeline, "set_images"):
+            self.timeline.set_images([
+                {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
+                for o in self.store.project().image_overlays
+            ])
