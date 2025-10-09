@@ -54,6 +54,22 @@ LEAVE_BUTTON_STYLE="""
     }
 """
 
+CREATE_PROJECT_BUTTON_STYLE="""
+    QPushButton{
+        background: red;
+        color: white;
+        border-radius: 12px;
+        padding: 40px 60px;
+        font-size: 30px;
+    }
+    QPushButton:hover {
+
+    }
+    QPushButton:pressed {
+    
+    }
+"""
+
 WINDOW_STYLE = """
     background-color: #2c3e50;
 """

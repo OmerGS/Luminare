@@ -5,6 +5,7 @@ from app.ui.components.title import Title
 from app.ui.components.menu_button import MenuButton
 from app.ui.components.project_button import ProjectButton
 from app.ui.components.leave_button import LeaveButton
+from app.ui.components.create_project_button import CreateProjectButton
 
 class MainMenu(QWidget):
     def __init__(self, go_to_editor, go_to_settings, go_to_home, vids):
@@ -30,7 +31,7 @@ class MainMenu(QWidget):
         layoutCreate.addWidget(Title("🎬 Luminare"))
 
         # Boutons (utilisation du composant MenuButton)
-        layoutCreate.addWidget(MenuButton("🖊️ Éditeur", go_to_editor), stretch=7 )
+        layoutCreate.addWidget(CreateProjectButton("🖊️ Éditeur", go_to_editor), stretch=7 )
 
         layoutCreate.addStretch()
 
