@@ -11,23 +11,21 @@ from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
 from ui.components.assets_panel import AssetsPanel
-from ui.editor.importPanel import ImportPanel
 
 
+# app/ui/main_window.py (extrait: classe EditorWindow)
 class EditorWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Luminare — Lecteur & Timeline")
         self.resize(1280, 720)
 
-        # back
+        # --- Backends ---
         self.media = MediaController(self)
         self.store = Store(self)
         self.exporter = Exporter()
 
-        self.import_panel = ImportPanel(add_to_timeline_callback=self._add_to_timeline)
-
-        # centre vidéo (canvas)
+        # --- Widgets principaux ---
         self.canvas = VideoCanvas()
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -37,58 +35,56 @@ class EditorWindow(QWidget):
         self.timeline_scroll = TimelineScroll(self)
         self.timeline = self.timeline_scroll.timeline
         self.timeline.imageDropped.connect(self.on_timeline_drop_image)
-        
 
-        self.inspector = Inspector(self)          # ← parent explicite
+        self.inspector = Inspector(self)
         self.inspector.setMinimumWidth(260)
         self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
-        self.assets = AssetsPanel()               # panneau médias (gauche)
+        self.assets = AssetsPanel(self)
+        
 
-        root = QHBoxLayout(self)                 
-        root.setContentsMargins(6, 6, 6, 6)
-        root.setSpacing(6)
 
-        center = QVBoxLayout()
-        center.setContentsMargins(0, 0, 0, 0)
-        center.setSpacing(6)
-
+        # --- Layout racine (UN SEUL) ---
         main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(6)
+
         top_layout = QHBoxLayout()
-        top_layout.addWidget(self.import_panel, stretch=1)  # ImportPanel à gauche
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(6)
 
-        center.addWidget(self.canvas, stretch=5)
-        center.addLayout(self.controls)
-        sep = QFrame(); sep.setFrameShape(QFrame.HLine)
-        center.addWidget(sep)
-        center.addWidget(self.timeline_scroll, stretch=2)
+        # Colonne gauche : Import + Assets
+        left_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(6)
+        left_col.addWidget(self.assets, stretch=1)
 
-        root.addWidget(self.assets, 0)            # ← colonne gauche
-        root.addLayout(center, 1)                 # ← colonne centrale
-        root.addWidget(self.inspector, 0)         # ← colonne droite
+        # Colonne centre : Vidéo + Controls
+        center_col = QVBoxLayout()
+        center_col.setContentsMargins(0, 0, 0, 0)
+        center_col.setSpacing(6)
+        center_col.addWidget(self.canvas, stretch=5)
+        center_col.addLayout(self.controls)
 
-        # Video + controls en vertical
-        video_layout = QVBoxLayout()
-        video_layout.addWidget(self.canvas, stretch=5)
-        video_layout.addLayout(self.controls)  # controls sous la vidéo
-        top_layout.addLayout(video_layout, stretch=1)
+        # Colonne droite : Inspector
+        right_col = QVBoxLayout()
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setSpacing(6)
+        right_col.addWidget(self.inspector, stretch=1)
 
-        top_layout.addWidget(self.inspector, stretch=1)  # Inspector à droite
-        main_layout.addLayout(top_layout, stretch=1)
+        top_layout.addLayout(left_col, 0)
+        top_layout.addLayout(center_col, 1)
+        top_layout.addLayout(right_col, 0)
 
-        # Timeline en bas
-        main_layout.addWidget(self.timeline_scroll, stretch=1)
+        main_layout.addLayout(top_layout, 1)
+        main_layout.addWidget(self.timeline_scroll, 1)
 
-        self.setLayout(main_layout)
-
-
-        # Wiring vidéo et timeline (inchangé)
+        # --- Wiring vidéo & timeline ---
         self.media.frameImageAvailable.connect(self.canvas.set_frame)
         self.media.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
-        self.assets.addImageRequested.connect(self._add_image_at_playhead)
 
-        # Wiring timeline / player
+        self.assets.addImageRequested.connect(self._add_image_at_playhead)
 
         self.timeline.seekRequested.connect(self.media.seek_ms)
         self.media.durationChanged.connect(self.timeline.set_duration)
@@ -114,6 +110,7 @@ class EditorWindow(QWidget):
         # Store → UI
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
+
 
     # ----- actions & helpers identiques à ta version -----
     def _open_file(self):

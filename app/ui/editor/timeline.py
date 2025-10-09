@@ -1,15 +1,15 @@
 # app/ui/timeline.py
 from PySide6.QtCore import Qt, Signal, QRect
-from PySide6.QtGui import (QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent)
-from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip
+from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent
+from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip, QSizePolicy
 from ui.components.assets_panel import MIME_IMAGE_ASSET
 import json
 
 
 class TimelineWidget(QWidget):
     # Signals
-    seekRequested = Signal(int)           # ms
-    imageDropped = Signal(str, float)     # path, start_seconds   <<< NEW
+    seekRequested = Signal(int)           # position en ms
+    imageDropped = Signal(str, float)     # (path, start_seconds)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,7 +21,11 @@ class TimelineWidget(QWidget):
         self._overlays = []     # [{s,e,label}]  titres
         self._image_items = []  # [{s,e,label}]  images
 
-        self.setMinimumHeight(160)
+        # Hauteur fixe : on évite que la timeline prenne tout l'espace
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._content_height = 160
+        self.setFixedHeight(self._content_height)
+
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self.setAcceptDrops(True)  # DnD depuis AssetsPanel
@@ -79,7 +83,8 @@ class TimelineWidget(QWidget):
     def _update_width(self):
         secs = max(1, int(self._duration_ms / 1000))
         width = max(1000, secs * self._px_per_sec)
-        self.setFixedSize(width, 160)
+        # IMPORTANT : n'ajuste que la largeur, la hauteur reste fixe
+        self.setFixedWidth(width)
 
     def sizeHint(self):  # noqa
         return self.size()
@@ -186,7 +191,7 @@ class TimelineWidget(QWidget):
         try:
             pos_global = e.globalPosition().toPoint()  # Qt6
         except AttributeError:
-            pos_global = e.globalPos()                 # fallback Qt5
+            pos_global = e.globalPos()                 # Qt5 fallback
 
         for ov in self._overlays:
             s, e_ = min(ov["s"], ov["e"]), max(ov["s"], ov["e"])
@@ -236,7 +241,7 @@ class TimelineWidget(QWidget):
             data = json.loads(bytes(e.mimeData().data(MIME_IMAGE_ASSET)).decode("utf-8"))
             path = data.get("path")
             start_s = self._x_to_s(int(e.position().x()))
-            self.imageDropped.emit(path, start_s)  # <<< laisse le MainWindow gérer la création
+            self.imageDropped.emit(path, start_s)  # MainWindow gère la création
             e.acceptProposedAction()
         else:
             e.ignore()
@@ -249,3 +254,8 @@ class TimelineScroll(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.timeline = TimelineWidget()
         self.setWidget(self.timeline)
+
+        # la scrollarea aussi garde une hauteur compacte
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # contenu (160) + scrollbar (~20) + marge
+        self.setFixedHeight(180)
