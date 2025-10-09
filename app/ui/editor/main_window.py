@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame
 
-from ui.editor.video_canvas import VideoCanvas               # ← nouveau
+from ui.editor.video_canvas import VideoCanvas              
 from ui.editor.player_controls import PlayerControls
 from ui.editor.timeline import TimelineScroll
 from ui.inspector import Inspector
