@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame
 
-from ui.editor.video_canvas import VideoCanvas               # ← nouveau
+from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
 from ui.editor.timeline import TimelineScroll
 from ui.inspector import Inspector
@@ -13,18 +13,15 @@ from engine.exporter import Exporter
 from ui.editor.importPanel import ImportPanel
 
 class EditorWindow(QWidget):
-    def __init__(self):
+    def __init__(self, store: Store, parent=None): 
         super().__init__()
         self.setWindowTitle("Luminare — Lecteur & Timeline")
         self.resize(1280, 720)
 
         # back
         self.media = MediaController(self)
-        self.store = Store(self)
-        self.store.start_auto_save(30000)  
+        self.store = store
         self.exporter = Exporter()
-
-        
 
         # ----- ImportPanel -----
         self.import_panel = ImportPanel(add_to_timeline_callback=self._add_to_timeline)
@@ -129,9 +126,7 @@ class EditorWindow(QWidget):
         self._refresh_overlay()
 
     def _refresh_overlay(self):
-        # push le project au canvas
         self.canvas.set_project(self.store.project())
-        # et pousser info vers la timeline (barres d'overlay)
         self.timeline.set_overlays([
             {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
             for ov in self.store.project().text_overlays
@@ -142,3 +137,58 @@ class EditorWindow(QWidget):
         """Ajoute le média importé directement à la timeline et au store."""
         self.store.set_clip(file_path)
         self.media.load(QUrl.fromLocalFile(file_path))
+
+    def _prompt_for_project(self):
+        """Affiche une boîte de dialogue pour choisir entre nouveau projet ou chargement."""
+        msgBox = QMessageBox(self)
+        msgBox.setWindowTitle("Démarrer votre session")
+        msgBox.setText("Que voulez-vous faire ?")
+        msgBox.setInformativeText("Un nouveau projet vierge est chargé par défaut.")
+        
+        new_project_btn = msgBox.addButton("Nouveau Projet", QMessageBox.AcceptRole)
+        load_project_btn = msgBox.addButton("Charger un Projet", QMessageBox.ActionRole)
+        msgBox.setDefaultButton(new_project_btn)
+
+        msgBox.exec()
+        
+        clicked_button = msgBox.clickedButton()
+
+        if clicked_button == load_project_btn:
+            self._open_load_dialog()
+            
+        elif clicked_button == new_project_btn:
+            print("Action: Nouveau projet (par défaut)")
+            
+    def _open_load_dialog(self):
+        """Ouvre la boîte de dialogue standard pour sélectionner un fichier .lmprj."""
+        from core.save_system.serializers import LMPRJChunkedSerializer
+        import os
+        
+        save_dir = LMPRJChunkedSerializer.get_save_dir()
+        
+        selected_file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Charger un projet Luminare (.lmprj)",
+            save_dir,
+            "Fichiers Projet Luminare (*.lmprj)"
+        )
+
+        if selected_file_path:
+            filename_to_load = os.path.basename(selected_file_path)
+            self.store.load_project(filename_to_load)
+            proj = self.store.project()
+            if proj.clips:
+                 self.media.load(QUrl.fromLocalFile(proj.clips[0].path))
+                 self.media.seek_ms(0)
+                 self._refresh_overlay()
+        else:
+            print("Chargement annulé, conservation du projet actuel.")
+
+    def setup_project_on_entry(self):
+        """
+        Gère le dialogue de choix Nouveau/Charger. 
+        À appeler juste avant de rendre l'éditeur visible.
+        """
+        self._prompt_for_project() 
+        self._refresh_overlay()
+        self.setWindowTitle(f"Luminare — {self.store.project().name}")

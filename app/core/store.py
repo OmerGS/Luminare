@@ -65,6 +65,26 @@ class Store(QObject):
         from core.save_system.save_api import ProjectAPI
         try:
             ProjectAPI.save(self._project, "auto_save.lmprj")
-            print("💾 Auto-save effectué")
+            print("Auto-save effectué")
         except Exception as e:
-            print("❌ Auto-save échoué :", e)
+            print("Auto-save échoué :", e)
+
+    def load_project(self, filename: str) -> None:
+        """
+        Charge un projet à partir d'un fichier et écrase le projet actuel.
+        Émet les signaux de changement appropriés.
+        """
+        from core.save_system.save_api import ProjectAPI        
+        try:
+            new_project = ProjectAPI.load(filename)
+            
+            self._project = new_project
+            
+            self.overlayChanged.emit()
+            self.changed.emit()
+            print(f"Projet chargé avec succès : {filename}")
+
+        except FileNotFoundError:
+            print(f"Erreur de chargement : Le fichier '{filename}' n'existe pas.")
+        except Exception as e:
+            print(f"Erreur de chargement du projet : {e}")

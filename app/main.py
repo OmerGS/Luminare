@@ -90,5 +90,48 @@ def main():
 
     sys.exit(app.exec())
 
+def main():
+    root = set_cwd_to_repo_root()
+    bootstrap_ffmpeg_on_path(root)
+    ensure_cache_dirs(root)
+    quiet_qt_multimedia_logs()
+
+    from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget, QVBoxLayout
+    from app.ui.menu.home.home_menu import MainMenu
+    from app.ui.editor.main_window import EditorWindow
+    from core.store import Store
+
+    app = QApplication(sys.argv)
+
+    store_instance = Store()
+    store_instance.start_auto_save() 
+    stacked = QStackedWidget()
+    editor = EditorWindow(store=store_instance) 
+
+    # Menu principal
+    def go_to_editor():
+        """
+        Bascule vers l'éditeur. Exécute la logique de choix Nouveau/Charger avant de montrer l'éditeur.
+        """
+        editor.setup_project_on_entry()        
+        stacked.setCurrentWidget(editor)
+
+    main_menu = MainMenu(go_to_editor)
+
+    def go_back_to_menu():
+        stacked.setCurrentWidget(main_menu)
+
+    stacked.addWidget(main_menu)
+    stacked.addWidget(editor)
+    stacked.setCurrentWidget(main_menu)
+
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    layout.addWidget(stacked)
+    window.setWindowTitle(f"Luminare - {store_instance.project().name}") 
+    window.showMaximized()
+
+    sys.exit(app.exec())
+
 if __name__ == "__main__":
     main()
