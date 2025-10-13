@@ -35,7 +35,6 @@ class LMPRJChunkedSerializer:
         filepath = os.path.join(LMPRJChunkedSerializer.get_save_dir(), filename)
 
         with open(filepath, "wb") as f:
-            # PROJ : version + name
             proj_meta = {"version": LMPRJChunkedSerializer.VERSION, "name": project.name}
             LMPRJChunkedSerializer.write_chunk(f, "PROJ", json.dumps(proj_meta).encode("utf-8"))
 
@@ -49,6 +48,11 @@ class LMPRJChunkedSerializer:
             LMPRJChunkedSerializer.write_chunk(f, "AUDN", struct.pack("?", project.audio_normalize))
             # Filters
             LMPRJChunkedSerializer.write_chunk(f, "FILT", json.dumps(vars(project.filters)).encode("utf-8"))
+
+            if project.imported_assets:
+                imported_data = json.dumps(project.imported_assets).encode("utf-8")
+                LMPRJChunkedSerializer.write_chunk(f, "IMPT", imported_data)
+
             # Clips
             for clip in project.clips:
                 LMPRJChunkedSerializer.write_chunk(f, "CLIP", json.dumps({"path": clip.path, "trim": clip.trim}).encode("utf-8"))
@@ -75,7 +79,7 @@ class LMPRJChunkedSerializer:
                     chunk_id = chunk_id.decode("ascii")
                     data = f.read(length)
                 except Exception as e:
-                    print(f"⚠️ Erreur de lecture d’un chunk : {e}")
+                    print(f"Erreur de lecture d’un chunk : {e}")
                     continue
 
                 try:
@@ -93,6 +97,8 @@ class LMPRJChunkedSerializer:
                     elif chunk_id == "FILT":
                         filt = json.loads(data.decode("utf-8"))
                         proj.filters = Filters(**filt)
+                    elif chunk_id == "IMPT":
+                        proj.imported_assets = json.loads(data.decode("utf-8"))
                     elif chunk_id == "CLIP":
                         clip_data = json.loads(data.decode("utf-8"))
                         proj.clips.append(Clip(**clip_data))
@@ -100,10 +106,9 @@ class LMPRJChunkedSerializer:
                         ov_data = json.loads(data.decode("utf-8"))
                         proj.text_overlays.append(TextOverlay(**ov_data))
                     else:
-                        # Chunk inconnu → on ignore
                         continue
                 except Exception as e:
-                    print(f"⚠️ Erreur de décodage du chunk {chunk_id} : {e}")
+                    print(f"Erreur de décodage du chunk {chunk_id} : {e}")
 
         return proj
 

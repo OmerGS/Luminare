@@ -1,5 +1,6 @@
 from typing import Callable
 import os
+from app.types import ImportTypes
 from core.save_system.serializers import LMPRJChunkedSerializer
 from core import project as Project
 
@@ -45,3 +46,39 @@ class ProjectAPI:
         """
         proj = LMPRJChunkedSerializer.load(filename)
         return len(proj.clips)
+    
+    @staticmethod
+    def add_import(filename: str, import_path: str, type: ImportTypes) -> str:
+        """Ajoute un import au projet spécifié (en modifiant le fichier .lmprj)."""
+        
+        def update_callback(project):
+            new_asset = {
+                "path": import_path,
+                "type": type.value
+            }
+            
+            if not any(a["path"] == import_path for a in project.imported_assets):
+                project.imported_assets.append(new_asset)
+                print(f"Asset ajouté au fichier {filename}: {import_path}")
+            else:
+                print(f"Asset déjà présent dans le fichier {filename}: {import_path}")
+
+        return ProjectAPI.update_project(filename, update_callback)
+
+    @staticmethod
+    def remove_import(filename: str, import_path: str) -> str:
+        """Retire un import du projet spécifié (en modifiant le fichier .lmprj)."""
+        
+        def update_callback(project):
+            initial_count = len(project.imported_assets)
+            
+            project.imported_assets = [
+                a for a in project.imported_assets if a["path"] != import_path
+            ]
+            
+            if len(project.imported_assets) < initial_count:
+                print(f"Asset retiré du fichier {filename}: {import_path}")
+            else:
+                print(f"Asset non trouvé dans le fichier {filename}: {import_path}")
+
+        return ProjectAPI.update_project(filename, update_callback)

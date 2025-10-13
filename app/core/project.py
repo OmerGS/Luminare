@@ -34,6 +34,7 @@ class Project:
     resolution: Tuple[int, int] = (1920, 1080)
     fps: float = 30.0
     clips: List[Clip] = field(default_factory=list)
+    imported_assets: List[Dict[str, Any]] = field(default_factory=list)
     text_overlays: List[TextOverlay] = field(default_factory=list)
     filters: Filters = field(default_factory=Filters)
     output: str = "exports/output.mp4"
@@ -44,6 +45,7 @@ class Project:
         return {
             "name": self.name,
             "clips": [ {"path": c.path, "trim": c.trim} for c in self.clips ],
+            "imported_assets": self.imported_assets,
             "text_overlays": [vars(t) for t in self.text_overlays],
             "filters": vars(self.filters),
             "resolution": self.resolution,
@@ -61,6 +63,7 @@ class Project:
             output=data.get("output", "exports/output.mp4"),
             audio_normalize=data.get("audio_normalize", True)
         )
+        proj.imported_assets = data.get("imported_assets", [])
         proj.clips = [Clip(**c) for c in data.get("clips", [])]
         proj.text_overlays = [TextOverlay(**t) for t in data.get("text_overlays", [])]
         filt = data.get("filters", {})
