@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip, QSizePolicy
-from ui.components.assets_panel import MIME_IMAGE_ASSET
+from ui.components.media_list import MIME_IMAGE_ASSET
 import json
 
 
@@ -22,9 +22,9 @@ class TimelineWidget(QWidget):
         self._image_items = []  # [{s,e,label}]  images
 
         # Hauteur fixe : on évite que la timeline prenne tout l'espace
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._content_height = 160
-        self.setFixedHeight(self._content_height)
+        #self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._content_height = 500
+        #self.setFixedHeight(self._content_height)
 
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
@@ -258,4 +258,4 @@ class TimelineScroll(QScrollArea):
         # la scrollarea aussi garde une hauteur compacte
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         # contenu (160) + scrollbar (~20) + marge
-        self.setFixedHeight(180)
+        self.setFixedHeight(300)
