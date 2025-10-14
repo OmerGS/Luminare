@@ -1,4 +1,3 @@
-# app/ui/components/assets_panel.py
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -7,10 +6,9 @@ from PySide6.QtWidgets import (
 )
 import os
 
-from ui.components.media_list import MIME_MEDIA_ASSET, MediaListWidget
+from ui.components.media_list import MIME_MEDIA_ASSET, MediaListWidget 
 
 class AssetsPanel(QWidget):
-    """Panneau unique : onglets + import + bouton 'ajouter au curseur'."""
     addImageRequested = Signal(str)
 
     def __init__(self, parent=None):
@@ -24,46 +22,34 @@ class AssetsPanel(QWidget):
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
 
-        # --- Fonctions utilitaires pour les icônes ---
         def _get_icon(standard_icon):
             return QApplication.style().standardIcon(standard_icon)
 
-        # Onglets
         self.tab_audio  = MediaListWidget(MIME_MEDIA_ASSET)
         self.tab_images = MediaListWidget(MIME_MEDIA_ASSET)
         self.tab_text   = MediaListWidget(MIME_MEDIA_ASSET)
         self.tab_video  = MediaListWidget(MIME_MEDIA_ASSET)
 
 
-        # =====================================================================
-        # MODIFICATION : REMPLACEMENT DES EMOJIS PAR DES ICÔNES QStyle
-        # =====================================================================
-
-        icon_video = _get_icon(QStyle.SP_MediaPlay) # MODIFIÉ (Icône de liste/détail, souvent utilisé pour du contenu textuel ou une liste)
+        icon_video = _get_icon(QStyle.SP_MediaPlay) 
         self.tabs.addTab(self.tab_video, icon_video, "Video")
 
-        # Audio (Utilise une icône de haut-parleur/volume)
-        icon_audio = _get_icon(QStyle.SP_MediaVolume) # MODIFIÉ
+        icon_audio = _get_icon(QStyle.SP_MediaVolume) 
         self.tabs.addTab(self.tab_audio, icon_audio, "Audio")
         
-        # Images (Utilise une icône d'image/média)
-        icon_images = _get_icon(QStyle.SP_FileIcon) # MODIFIÉ (SP_FileIcon est souvent utilisé pour les fichiers génériques)
+        icon_images = _get_icon(QStyle.SP_FileIcon) 
         self.tabs.addTab(self.tab_images, icon_images, "Images")
         
-        # Texte (Utilise une icône de document/texte)
-        icon_text = _get_icon(QStyle.SP_FileDialogDetailedView) # MODIFIÉ (Icône de liste/détail, souvent utilisé pour du contenu textuel ou une liste)
+        icon_text = _get_icon(QStyle.SP_FileDialogContentsView)
         self.tabs.addTab(self.tab_text, icon_text, "Texte")
 
 
-
         
-        # --- Barre d’actions sous la liste (Boutons avec icônes - déjà corrigé) ---
         btn_row1 = QHBoxLayout()
         self.btn_import = QPushButton(_get_icon(QStyle.SP_DialogOpenButton), " Importer…")
         btn_row1.addWidget(self.btn_import)
         root.addLayout(btn_row1)
 
-        # Aperçu simple sous le bouton
         self.preview = QLabel()
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumHeight(80)
@@ -75,29 +61,92 @@ class AssetsPanel(QWidget):
         btn_row2.addWidget(self.btn_add)
         root.addLayout(btn_row2)
 
-        # Connexions
-        self.btn_import.clicked.connect(self._import_images)
+        self.btn_import.clicked.connect(self._handle_import_click)
         self.btn_add.clicked.connect(self._emit_selected)
-        self.tab_images.currentItemChanged.connect(self._update_preview)
+        
+        self.tabs.currentChanged.connect(self._update_add_button_visibility)
 
-    # --- actions (inchangées) ---
+        self._update_add_button_visibility(self.tabs.currentIndex())
+
+
+
+    def _handle_import_click(self):
+        """Déclenche la méthode d'importation appropriée selon l'onglet actif."""
+        current_tab = self.tabs.currentWidget()
+        
+        if current_tab is self.tab_video:
+            self._import_video()
+        elif current_tab is self.tab_images:
+            self._import_images()
+        elif current_tab is self.tab_audio:
+            self._import_audio()
+        # elif current_tab is self.tab_text:
+        #     self._import_text()
+
+
+    def _import_video(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Choisir des vidéos", "",
+            "Vidéos (*.mp4 *.mov *.mkv *.avi);;Tous les fichiers (*.*)"
+        )
+        for f in files:
+            self.tab_video.add_media_item(f)
+        if files:
+            self.tabs.setCurrentWidget(self.tab_video)
+
+
     def _import_images(self):
         files, _ = QFileDialog.getOpenFileNames(
             self, "Choisir des images", "",
-            "Images (*.png *.jpg *.jpeg *.webp *.gif)"
+            "Images (*.png *.jpg *.jpeg *.webp *.gif);;Tous les fichiers (*.*)"
         )
         for f in files:
             self.tab_images.add_media_item(f)
         if files:
             self.tabs.setCurrentWidget(self.tab_images)
 
+    def _import_audio(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Choisir des fichiers audio", "",
+            "Audio (*.mp3 *.wav *.ogg);;Tous les fichiers (*.*)"
+        )
+        for f in files:
+            self.tab_audio.add_media_item(f)
+        if files:
+            self.tabs.setCurrentWidget(self.tab_audio)
+
+
+
+
+    # app/ui/components/assets_panel.py (Lignes 120-137 modifiées)
+
+    def _update_add_button_visibility(self, index):
+        current_widget = self.tabs.widget(index)
+
+        if current_widget is self.tab_images:
+            self.btn_add.setVisible(True)
+            self.preview.setVisible(True)
+
+            self._update_preview() 
+        else:
+            self.btn_add.setVisible(False)
+            self.preview.setVisible(False)
+            self.preview.clear()
+
+
     def _emit_selected(self):
-        if self.tabs.currentWidget() is self.tab_images:
+        """Émet le chemin de l'image sélectionnée pour l'ajout à la timeline."""
+        current_tab = self.tabs.currentWidget()
+        
+        if current_tab is self.tab_images:
             path = self.tab_images.current_path()
             if path:
                 self.addImageRequested.emit(path)
 
+    
+
     def _update_preview(self):
+        """Affiche la miniature de l'image sélectionnée."""
         path = self.tab_images.current_path()
         if path and os.path.exists(path):
             self.preview.setPixmap(QPixmap(path).scaledToHeight(76, Qt.SmoothTransformation))

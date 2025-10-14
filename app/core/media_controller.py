@@ -52,7 +52,7 @@ class MediaController(QObject):
 
         current_pos_ms = self.position_ms()
         new_pos_ms = current_pos_ms + delta_ms
-        duration_ms = self.duration()
+        duration_ms = self.duration_ms()
         new_pos_ms = max(0, min(new_pos_ms, duration_ms))
 
         self.seek_ms(new_pos_ms)
