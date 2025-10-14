@@ -1,7 +1,10 @@
 # app/ui/timeline.py
-from PySide6.QtCore import Qt, Signal, QSize, QRect
-from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QCursor
-from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip
+from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent
+from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip, QSizePolicy
+from ui.components.media_list import MIME_IMAGE_ASSET
+import json
+
 
 class TimelineWidget(QWidget):
     seekRequested = Signal(int)
@@ -12,8 +15,15 @@ class TimelineWidget(QWidget):
         self._position_ms = 0
         self._px_per_sec = 80
         self._drag = False
-        self._overlays = []  # list of (start_sec, end_sec)
-        self.setMinimumHeight(160)
+
+        self._overlays = []     # [{s,e,label}]  titres
+        self._image_items = []  # [{s,e,label}]  images
+
+        # Hauteur fixe : on évite que la timeline prenne tout l'espace
+        #self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._content_height = 500
+        #self.setFixedHeight(self._content_height)
+
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self._update_width()
@@ -178,3 +188,8 @@ class TimelineScroll(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.timeline = TimelineWidget()
         self.setWidget(self.timeline)
+
+        # la scrollarea aussi garde une hauteur compacte
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # contenu (160) + scrollbar (~20) + marge
+        self.setFixedHeight(300)

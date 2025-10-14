@@ -1,4 +1,3 @@
-# engine/exporter.py
 from pathlib import Path
 from core.save_system.save_api import ProjectAPI
 from core.project import Project
