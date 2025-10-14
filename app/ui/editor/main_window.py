@@ -31,7 +31,7 @@ class EditorWindow(QWidget):
         # timeline
         self.timeline_scroll = TimelineScroll(self)
         self.timeline = self.timeline_scroll.timeline
-        #self.timeline.imageDropped.connect(self.on_timeline_drop_image)
+        self.timeline.imageDropped.connect(self.on_timeline_drop_image)
 
         self.inspector = Inspector(self)
         #self.inspector.setMinimumWidth(260)

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 import os
 
-from ui.components.media_list import MIME_IMAGE_ASSET, _MediaList
+from ui.components.media_list import MIME_MEDIA_ASSET, MediaListWidget
 
 class AssetsPanel(QWidget):
     """Panneau unique : onglets + import + bouton 'ajouter au curseur'."""
@@ -29,14 +29,19 @@ class AssetsPanel(QWidget):
             return QApplication.style().standardIcon(standard_icon)
 
         # Onglets
-        self.tab_audio  = _MediaList(None)
-        self.tab_images = _MediaList(MIME_IMAGE_ASSET)
-        self.tab_text   = _MediaList(None)
+        self.tab_audio  = MediaListWidget(MIME_MEDIA_ASSET)
+        self.tab_images = MediaListWidget(MIME_MEDIA_ASSET)
+        self.tab_text   = MediaListWidget(MIME_MEDIA_ASSET)
+        self.tab_video  = MediaListWidget(MIME_MEDIA_ASSET)
+
 
         # =====================================================================
         # MODIFICATION : REMPLACEMENT DES EMOJIS PAR DES ICÔNES QStyle
         # =====================================================================
-        
+
+        icon_video = _get_icon(QStyle.SP_MediaPlay) # MODIFIÉ (Icône de liste/détail, souvent utilisé pour du contenu textuel ou une liste)
+        self.tabs.addTab(self.tab_video, icon_video, "Video")
+
         # Audio (Utilise une icône de haut-parleur/volume)
         icon_audio = _get_icon(QStyle.SP_MediaVolume) # MODIFIÉ
         self.tabs.addTab(self.tab_audio, icon_audio, "Audio")
@@ -48,6 +53,9 @@ class AssetsPanel(QWidget):
         # Texte (Utilise une icône de document/texte)
         icon_text = _get_icon(QStyle.SP_FileDialogDetailedView) # MODIFIÉ (Icône de liste/détail, souvent utilisé pour du contenu textuel ou une liste)
         self.tabs.addTab(self.tab_text, icon_text, "Texte")
+
+
+
         
         # --- Barre d’actions sous la liste (Boutons avec icônes - déjà corrigé) ---
         btn_row1 = QHBoxLayout()
@@ -79,7 +87,7 @@ class AssetsPanel(QWidget):
             "Images (*.png *.jpg *.jpeg *.webp *.gif)"
         )
         for f in files:
-            self.tab_images.add_path(f)
+            self.tab_images.add_media_item(f)
         if files:
             self.tabs.setCurrentWidget(self.tab_images)
 
