@@ -19,6 +19,18 @@ class Store(QObject):
         self._project.clips = [Clip(path=path, trim=(0.0, max(1.0, duration_s)))]
         self.changed.emit()
 
+    def set_project_name(self, name: str):
+        """
+        Définit un nouveau nom pour le projet en cours et notifie les observateurs.
+        """
+        if name:
+            # Nettoyer les espaces et définir le nouveau nom
+            self._project.name = name.strip()
+            
+            # Émettre le signal pour mettre à jour les composants qui affichent le nom
+            self.changed.emit()
+            print(f"Le nom du projet a été mis à jour : {self._project.name}")
+
     def add_text_overlay(self, ov: Optional[TextOverlay] = None):
         self._project.text_overlays.append(ov or TextOverlay())
         self.overlayChanged.emit(); self.changed.emit()
@@ -64,7 +76,7 @@ class Store(QObject):
     def _auto_save(self):
         from core.save_system.save_api import ProjectAPI
         try:
-            ProjectAPI.save(self._project, "auto_save.lmprj")
+            ProjectAPI.save(self._project, f"{self._project.name.strip() }.lmprj" )
             print("Auto-save effectué")
         except Exception as e:
             print("Auto-save échoué :", e)

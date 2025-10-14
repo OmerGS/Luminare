@@ -131,6 +131,10 @@ def main():
     window.setWindowTitle(f"Luminare - {store_instance.project().name}") 
     window.showMaximized()
 
+    store_instance.changed.connect(
+        lambda: window.setWindowTitle(f"Luminare - {store_instance.project().name}")
+    )
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":

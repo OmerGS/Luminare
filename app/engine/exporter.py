@@ -1,18 +1,46 @@
 from pathlib import Path
 from core.save_system.save_api import ProjectAPI
 from core.project import Project
+from typing import Callable, Any, Dict
+from mvp_editor import main as render_project
 
 class Exporter:
     def __init__(self):
         try:
-            from mvp_editor import main as render_project
-            self._render = render_project
+            self._render: Callable[[Dict[str, Any]], None] = render_project 
         except Exception:
             self._render = None
 
+    def _create_export_dict(self, proj: Project, out_path: Path) -> dict:
+        """Crée le dictionnaire de configuration pour le moteur de rendu."""
+        
+        clips_export = [{"path": c.path, "trim": c.trim} for c in proj.clips]
+
+        return {
+            "clips": clips_export,
+            "resolution": proj.resolution,
+            "filters": vars(proj.filters),
+            "text_overlays": [vars(ov) for ov in proj.text_overlays], 
+            "output": str(out_path),
+            "fps": proj.fps,
+            "audio_normalize": proj.audio_normalize
+        }
+
+    def _export_project(self, proj: Project, out_path: Path) -> str:
+        """Méthode interne pour effectuer l'exportation et vérifier le moteur."""
+        if not self._render:
+            raise RuntimeError("mvp_editor introuvable.")
+            
+        project_dict = self._create_export_dict(proj, out_path)
+        
+        self._render(project_dict)
+        return str(out_path)
+
+    # --- Méthodes Publiques ---
+
     def export_quick(self, src_path: str, duration_ms: int) -> str:
         """
-        Export rapide depuis un fichier source (temporaire)
+        Export rapide depuis un fichier source
         """
         if not self._render:
             raise RuntimeError("mvp_editor introuvable.")
@@ -22,12 +50,11 @@ class Exporter:
         seconds = max(1, int((duration_ms or 5000) / 1000))
         seconds = min(5, seconds)
 
-        # On construit un projet temporaire
         proj = Project(name="Export Quick", resolution=(1920,1080), fps=30)
         proj.add_clip({"path": src_path, "trim": (0, seconds)})
 
         return self._export_project(proj, out)
-
+        
     def export_from_file(self, filename: str, fallback_src: str = None) -> str:
         """
         Export depuis un fichier .lmprj existant
@@ -47,23 +74,15 @@ class Exporter:
         out = Path("exports") / "output_gui.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
         return self._export_project(proj, out)
-
-    def _export_project(self, proj: Project, output_path: Path) -> str:
+        
+    def export_from_project(self, proj: Project, fallback_src: str) -> str:
         """
-        Convertit un Project en dict et appelle le moteur mvp_editor
+        Exportation directe d'un objet Project en mémoire.
         """
-        clips = [{"path": c["path"], "trim": c["trim"]} for c in proj.clips]
+        out_path = Path(proj.output) if proj.clips else Path("exports") / "output_gui.mp4"
+        if not proj.clips and fallback_src:
+            out_path = Path(fallback_src) # Utilise le fallback si le projet est vide
+        
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # TODO : ajouter tes filtres/text_overlays si besoin
-        project_dict = {
-            "clips": clips,
-            "resolution": proj.resolution,
-            "filters": {"brightness": 0.0, "contrast":1.0, "saturation":1.0, "vignette":False},
-            "text_overlays": [],
-            "output": str(output_path),
-            "fps": proj.fps,
-            "audio_normalize": proj.audio_normalize
-        }
-
-        self._render(project_dict)
-        return str(output_path)
+        return self._export_project(proj, out_path)

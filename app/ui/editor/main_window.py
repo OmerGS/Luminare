@@ -1,7 +1,6 @@
-# app/ui/main_window.py (extraits essentiels)
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame, QSizePolicy, QSplitter
+from PySide6.QtWidgets import QInputDialog, QWidget, QVBoxLayout, QFileDialog, QMessageBox, QSplitter
 
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
@@ -10,22 +9,17 @@ from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
-from ui.editor.importPanel import ImportPanel
-
+from ui.editor.assets_panel import AssetsPanel
 
 class EditorWindow(QWidget):
     def __init__(self, store: Store, parent=None): 
         super().__init__()
-        self.setWindowTitle("Luminare — Lecteur & Timeline")
         self.resize(1280, 720)
 
         # back
         self.media = MediaController(self)
         self.store = store
         self.exporter = Exporter()
-
-        # ----- ImportPanel -----
-        self.import_panel = ImportPanel(add_to_timeline_callback=self._add_to_timeline)
 
         # centre vidéo (canvas)
         self.canvas = VideoCanvas()
@@ -43,7 +37,7 @@ class EditorWindow(QWidget):
         #self.inspector.setMinimumWidth(260)
         #self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
-        self.assets = ImportPanel(self)
+        self.assets = AssetsPanel(self)
 
         #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         #self.assets.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -233,7 +227,20 @@ class EditorWindow(QWidget):
             self._open_load_dialog()
             
         elif clicked_button == new_project_btn:
-            print("Action: Nouveau projet (par défaut)")
+            new_name, ok = QInputDialog.getText(
+                self, 
+                "Nommer votre projet", 
+                "Entrez le nom du nouveau projet:",
+                text=self.store.project().name
+            )
+            
+            if ok and new_name and new_name != self.store.project().name:
+                self.store.set_project_name(new_name)
+                print(f"Action: Nouveau projet nommé : {new_name}")
+            elif ok:
+                print("Action: Nouveau projet conservant le nom par défaut.")
+            else:
+                print("Création du nouveau projet annulée (nom par défaut conservé).")
             
     def _open_load_dialog(self):
         """Ouvre la boîte de dialogue standard pour sélectionner un fichier .lmprj."""
