@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtGui import QPainter, QPen, QBrush, QFontMetrics, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QWidget, QScrollArea, QToolTip, QSizePolicy
-from ui.components.media_list import MIME_IMAGE_ASSET
+from ui.components.media_list import MIME_MEDIA_ASSET
 import json
 
 
@@ -231,14 +231,14 @@ class TimelineWidget(QWidget):
 
     # ---------- Drag & Drop d'images ----------
     def dragEnterEvent(self, e: QDragEnterEvent):
-        if e.mimeData().hasFormat(MIME_IMAGE_ASSET):
+        if e.mimeData().hasFormat(MIME_MEDIA_ASSET):
             e.acceptProposedAction()
         else:
             e.ignore()
 
     def dropEvent(self, e: QDropEvent):
-        if e.mimeData().hasFormat(MIME_IMAGE_ASSET):
-            data = json.loads(bytes(e.mimeData().data(MIME_IMAGE_ASSET)).decode("utf-8"))
+        if e.mimeData().hasFormat(MIME_MEDIA_ASSET):
+            data = json.loads(bytes(e.mimeData().data(MIME_MEDIA_ASSET)).decode("utf-8"))
             path = data.get("path")
             start_s = self._x_to_s(int(e.position().x()))
             self.imageDropped.emit(path, start_s)  # MainWindow gère la création
