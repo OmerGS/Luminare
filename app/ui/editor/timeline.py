@@ -8,6 +8,7 @@ import json
 
 class TimelineWidget(QWidget):
     seekRequested = Signal(int)
+    imageDropped = Signal(str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -198,7 +199,6 @@ class TimelineWidget(QWidget):
             e.acceptProposedAction()
         else:
             e.ignore()
-
 
 class TimelineScroll(QScrollArea):
     def __init__(self, parent=None):

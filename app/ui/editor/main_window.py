@@ -203,6 +203,16 @@ class EditorWindow(QWidget):
         ])
         self.timeline.update()
 
+    def on_timeline_drop_image(self, path: str, start_s: float):
+        ov = self.store.add_image_overlay(path, start_s, duration=3.0)
+        from pathlib import Path as _P
+        self.timeline.set_images([
+            {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
+            for o in self.store.project().image_overlays
+        ])
+        self.canvas.set_project(self.store.project())
+        self.media.seek_ms(int(start_s * 1000))
+
     def _add_to_timeline(self, file_path):
         """Ajoute le média importé directement à la timeline et au store."""
         self.store.set_clip(file_path)
