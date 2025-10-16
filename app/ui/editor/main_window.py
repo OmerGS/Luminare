@@ -24,6 +24,7 @@ class EditorWindow(QWidget):
         self.media = MediaController(self)
         self.store = Store(self)
         self.exporter = Exporter()
+        self.timeline_view = TimelineView(self)
 
         # --- Widgets principaux ---
         self.canvas = VideoCanvas()
@@ -32,9 +33,14 @@ class EditorWindow(QWidget):
         self.controls = PlayerControls()
         self.controls.set_media(self.media)
 
-        self.timeline_scroll = TimelineScroll(self)
-        self.timeline = self.timeline_scroll.timeline
-        self.timeline.imageDropped.connect(self.on_timeline_drop_image)
+         # timeline interactions
+        self.timeline_view.seekRequested.connect(self.media.seek_ms)
+        self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
+
+        # wiring
+        self.media.positionChanged.connect(self.timeline_view.set_playhead_ms)
+        self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
+        self.timeline_view.seekRequested.connect(self.media.seek_ms)
 
         self.inspector = Inspector(self)
         #self.inspector.setMinimumWidth(260)
@@ -164,6 +170,8 @@ class EditorWindow(QWidget):
 
 
     # ----- actions & helpers identiques à ta version -----
+    # dans EditorWindow
+
     def _open_file(self):
         start_dir = str(Path.cwd() / "assets")
         f, _ = QFileDialog.getOpenFileName(
@@ -172,9 +180,27 @@ class EditorWindow(QWidget):
         )
         if not f:
             return
+
+        # 1) charger le média
         self.media.load(QUrl.fromLocalFile(f))
         self.media.play()
-        self.store.set_clip(f, duration_s=5.0)
+
+        # 2) attendre la durée réelle et créer le clip au bon format
+        def _once_set_clip(d_ms: int):
+            self.media.durationChanged.disconnect(_once_set_clip)
+            dur_s = max(0.1, d_ms / 1000.0)
+            self.store.set_clip(f, duration_s=dur_s)  # -> émet clipsChanged -> _on_clips_changed
+        self.media.durationChanged.connect(_once_set_clip)
+
+    def _on_clips_changed(self):
+        clips = self.store.project().clips
+        items = clips_to_timeline_items(clips)
+        self.timeline_view.set_clips(items)
+        total_ms = total_sequence_duration_ms(clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
+
+
 
     def _export(self):
         proj = self.store.project()
