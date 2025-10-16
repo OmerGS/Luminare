@@ -4,6 +4,9 @@ from PySide6.QtCore import Qt, QSize, QMimeData, QByteArray
 from PySide6.QtGui import QIcon, QPixmap, QDrag
 from PySide6.QtWidgets import QListWidget, QListWidgetItem, QAbstractItemView
 
+from app.core.save_system.save_api import ProjectAPI
+from app.types.ImportTypes import ImportTypes
+
 MIME_MEDIA_ASSET = "application/x-luminare-asset-media" 
 
 class MediaListWidget(QListWidget):
@@ -24,29 +27,44 @@ class MediaListWidget(QListWidget):
     def add_media_item(self, file_path: str):
         """Ajoute un média avec une miniature ou une icône par défaut."""
         ext = os.path.splitext(file_path)[1].lower()
-
+        name = os.path.basename(file_path)
+        print("Filepath ", file_path);
+        
+        type_asset = ImportTypes.OTHER
         icon = None
+        
         if ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
             pixmap = QPixmap(file_path).scaled(
                 self.iconSize(), Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
             icon = QIcon(pixmap)
+            type_asset = ImportTypes.IMAGE
+            
         elif ext in [".mp4", ".avi", ".mov", ".mkv"]:
-            # Placeholder for video icon
             icon = QIcon.fromTheme("video-x-generic") or QIcon("assets/icons/video.png")
+            type_asset = ImportTypes.VIDEO
+            
         elif ext in [".mp3", ".wav", ".ogg"]:
-            # Placeholder for audio icon
             icon = QIcon.fromTheme("audio-x-generic") or QIcon("assets/icons/audio.png")
+            type_asset = ImportTypes.AUDIO
+            
         elif ext in [".txt"]:
-            # Placeholder for text icon
             icon = QIcon.fromTheme("text-x-generic") or QIcon("assets/icons/text.png")
+            type_asset = ImportTypes.TEXT
+            
         else:
-            # Default file icon
             icon = QIcon.fromTheme("unknown") or QIcon("assets/icons/file.png")
+            type_asset = ImportTypes.OTHER
 
-        item = QListWidgetItem(icon, os.path.basename(file_path))
-        item.setData(self.FILE_PATH_ROLE, file_path)  
+        item = QListWidgetItem(icon, name)
+        item.setData(self.FILE_PATH_ROLE, file_path)
         self.addItem(item)
+                
+        try:
+            ProjectAPI.add_import(name, file_path, type_asset)
+        except Exception as e:
+            print(f"Erreur lors de l'enregistrement de l'import dans le projet : {e}")
+            
 
     def current_path(self) -> str | None:
         it = self.currentItem()

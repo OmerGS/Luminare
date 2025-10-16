@@ -72,7 +72,7 @@ if __name__ == "__main__":
     try:
         loaded_proj = ProjectAPI.load(selected_file)
     except Exception as e:
-        print(f"❌ Impossible de charger le projet : {e}")
+        print(f"Impossible de charger le projet : {e}")
         exit()
 
     # 🔹 Affichage complet
@@ -80,4 +80,4 @@ if __name__ == "__main__":
 
     # 🔹 Nombre de clips
     clip_count = len(loaded_proj.clips)
-    print(f"\n📊 Ce projet contient {clip_count} clip(s).")
+    print(f"\nCe projet contient {clip_count} clip(s).")

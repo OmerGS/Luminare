@@ -4,6 +4,8 @@ class ImportTypes(Enum):
     """
     Définit les types de ressources pouvant être importées dans le projet.
     """    
-    VISUEL = "VISUEL"
+    VIDEO = "VIDEO"
+    IMAGE = "IMAGE"
     AUDIO = "AUDIO"
     TEXT = "TEXTE"
+    OTHER = "OTHER"
