@@ -1,16 +1,22 @@
 # app/ui/main_window.py
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame, QSizePolicy
-
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox,
+    QFrame, QSizePolicy
+)
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
-from ui.editor.timeline import TimelineScroll
-from ui.inspector import Inspector
+#from ui.editor.timeline import TimelineScroll
+from ui.editor.timeline_graphics import TimelineView   # <<< NOUVEAU
+from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
-from ui.components.assets_panel import AssetsPanel
+from ui.editor.assets_panel import AssetsPanel
+from pathlib import Path
+from core.utils_timeline import clips_to_timeline_items, total_sequence_duration_ms
+
 
 
 # app/ui/main_window.py (extrait: classe EditorWindow)
@@ -24,6 +30,7 @@ class EditorWindow(QWidget):
         self.media = MediaController(self)
         self.store = Store(self)
         self.exporter = Exporter()
+        self.timeline_view = TimelineView(self)
 
         # --- Widgets principaux ---
         self.canvas = VideoCanvas()
@@ -32,17 +39,27 @@ class EditorWindow(QWidget):
         self.controls = PlayerControls()
         self.controls.set_media(self.media)
 
-        self.timeline_scroll = TimelineScroll(self)
-        self.timeline = self.timeline_scroll.timeline
-        self.timeline.imageDropped.connect(self.on_timeline_drop_image)
+         # timeline interactions
+        self.timeline_view.seekRequested.connect(self.media.seek_ms)
+        self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
+
+        # wiring
+        self.media.positionChanged.connect(self.timeline_view.set_playhead_ms)
+        self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
+        self.timeline_view.seekRequested.connect(self.media.seek_ms)
 
         self.inspector = Inspector(self)
-        self.inspector.setMinimumWidth(260)
-        self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        #self.inspector.setMinimumWidth(260)
+        #self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+
+        self.store.clipsChanged.connect(self._on_clips_changed)
+
 
         self.assets = AssetsPanel(self)
-        
 
+        #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        #self.assets.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        #self.inspector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # --- Layout racine (UN SEUL) ---
         main_layout = QVBoxLayout(self)
@@ -76,8 +93,54 @@ class EditorWindow(QWidget):
         top_layout.addLayout(center_col, 1)
         top_layout.addLayout(right_col, 0)
 
-        main_layout.addLayout(top_layout, 1)
-        main_layout.addWidget(self.timeline_scroll, 1)
+        #main_layout.addLayout(top_layout, 5)
+        #main_layout.addWidget(self.timeline_scroll, 1)
+
+        # Colonne Gauche (Assets) : doit pouvoir se rétrécir mais rester lisible.
+        self.assets.setMinimumWidth(150) # AJOUTÉ : Taille minimale pour Assets
+
+        # Colonne Centre (Canvas + Controls) : doit avoir une taille minimale pour la vidéo.
+        self.canvas.setMinimumSize(300, 200) # AJOUTÉ : Taille minimale pour la zone vidéo
+
+        # Colonne Droite (Inspector) : a déjà 100 de minimum dans votre code ci-dessous.
+
+        # Timeline : Assure une hauteur minimale pour la timeline.
+        # Note : Votre classe TimelineScroll/TimelineWidget doit gérer son MinimumHeight correctement.
+        if hasattr(self.timeline, 'setMinimumHeight'):
+             self.timeline.setMinimumHeight(100) 
+
+        self.center_container = QWidget()
+        center_col_layout = QVBoxLayout(self.center_container)
+        center_col_layout.setContentsMargins(0, 0, 0, 0)
+        center_col_layout.setSpacing(6)
+
+        center_col_layout.addWidget(self.canvas, stretch=3) 
+        center_col_layout.addWidget(self.controls) 
+
+        top_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+
+        top_splitter.addWidget(self.assets)          # Colonne gauche
+        top_splitter.addWidget(self.center_container) # Colonne centre (Canvas + Controls)
+        top_splitter.addWidget(self.inspector)
+
+        top_splitter.setSizes([200, 600, 200])
+
+        self.inspector.setMinimumWidth(100)
+
+        main_splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        main_splitter.addWidget(top_splitter)          # La zone supérieure complète
+        main_splitter.addWidget(self.timeline_view)  # La Timeline
+
+        main_splitter.setSizes([500, 100])
+        
+        # --- 4. Layout racine (UN SEUL) ---
+        # Le layout principal contient désormais uniquement le splitter principal
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(6)
+        main_layout.addWidget(main_splitter)
 
         # --- Wiring vidéo & timeline ---
         self.media.frameImageAvailable.connect(self.canvas.set_frame)
@@ -113,6 +176,8 @@ class EditorWindow(QWidget):
 
 
     # ----- actions & helpers identiques à ta version -----
+    # dans EditorWindow
+
     def _open_file(self):
         start_dir = str(Path.cwd() / "assets")
         f, _ = QFileDialog.getOpenFileName(
@@ -121,9 +186,27 @@ class EditorWindow(QWidget):
         )
         if not f:
             return
+
+        # 1) charger le média
         self.media.load(QUrl.fromLocalFile(f))
         self.media.play()
-        self.store.set_clip(f, duration_s=5.0)
+
+        # 2) attendre la durée réelle et créer le clip au bon format
+        def _once_set_clip(d_ms: int):
+            self.media.durationChanged.disconnect(_once_set_clip)
+            dur_s = max(0.1, d_ms / 1000.0)
+            self.store.set_clip(f, duration_s=dur_s)  # -> émet clipsChanged -> _on_clips_changed
+        self.media.durationChanged.connect(_once_set_clip)
+
+    def _on_clips_changed(self):
+        clips = self.store.project().clips
+        items = clips_to_timeline_items(clips)
+        self.timeline_view.set_clips(items)
+        total_ms = total_sequence_duration_ms(clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
+
+
 
     def _export(self):
         proj = self.store.project()
