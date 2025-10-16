@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QPushButton, QLabel, QSlider, QStyle, QWidget, QVBoxLayout, QHBoxLayout, QApplication
 )
@@ -18,6 +18,10 @@ class PlayerControls(QWidget):
     def __init__(self):
         super().__init__()
         
+        self.seek_timer = QTimer(self)
+        self.seek_timer.setSingleShot(True)
+        self.seek_timer.timeout.connect(self._enable_seek_buttons)
+
         self._state = PlaybackState.STOPPED
 
         main_vbox = QVBoxLayout(self)
@@ -33,8 +37,10 @@ class PlayerControls(QWidget):
         self.btn_play_pause = QPushButton(self._icon(QStyle.SP_MediaPlay), "") 
         
         # BOUTONS RAPIDES (seek)
-        #self.btn_backward = QPushButton(self._icon(QStyle.SP_MediaSeekBackward), "")
-        #self.btn_forward  = QPushButton(self._icon(QStyle.SP_MediaSeekForward), "")
+        self.btn_backward = QPushButton(self._icon(QStyle.SP_MediaSeekBackward), "")
+        self.btn_forward  = QPushButton(self._icon(QStyle.SP_MediaSeekForward), "")
+        self.btn_backward.clicked.connect(lambda: self._handle_seek(-500))
+        self.btn_forward.clicked.connect(lambda: self._handle_seek(500))
 
         self.btn_stop  = QPushButton(self._icon(QStyle.SP_MediaStop), "")
         self.btn_export = QPushButton("Exporter (MVP)")
@@ -50,9 +56,9 @@ class PlayerControls(QWidget):
 
         top_hbox.addWidget(self.btn_open)
 
-        #top_hbox.addWidget(self.btn_backward)
+        top_hbox.addWidget(self.btn_backward)
         top_hbox.addWidget(self.btn_play_pause)
-        #top_hbox.addWidget(self.btn_forward)
+        top_hbox.addWidget(self.btn_forward)
         top_hbox.addWidget(self.btn_stop)
         
         top_hbox.addWidget(self.pos_slider, 1)
@@ -84,8 +90,8 @@ class PlayerControls(QWidget):
         self.btn_play_pause.clicked.connect(self._toggle_play_pause)
         
         # Connexions pour le seeking rapide
-        #self.btn_backward.clicked.connect(lambda: self.seekRelativeRequested.emit(-5000))
-        #self.btn_forward.clicked.connect(lambda: self.seekRelativeRequested.emit(5000))
+        self.btn_backward.clicked.connect(lambda: self.seekRelativeRequested.emit(-5000))
+        self.btn_forward.clicked.connect(lambda: self.seekRelativeRequested.emit(5000))
         
         self.btn_stop.clicked.connect(lambda: self._media and self._media.stop())
         self.set_state(PlaybackState.STOPPED)
@@ -149,3 +155,14 @@ class PlayerControls(QWidget):
             s = int(ms / 1000); m, s = divmod(s,60); h, m = divmod(m,60)
             return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
         self.lbl_time.setText(f"{fmt(pos)} / {fmt(dur)}")
+
+    def _handle_seek(self, ms: int):
+        self.btn_forward.setEnabled(False)
+        self.btn_backward.setEnabled(False)
+        self.seekRelativeRequested.emit(ms) 
+        self.seek_timer.start(200) 
+
+
+    def _enable_seek_buttons(self):
+        self.btn_forward.setEnabled(True)
+        self.btn_backward.setEnabled(True)
