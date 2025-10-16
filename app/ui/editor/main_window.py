@@ -1,22 +1,16 @@
 # app/ui/main_window.py
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox,
-    QFrame, QSizePolicy
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QMessageBox, QFrame, QSizePolicy, QSplitter
+
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
-#from ui.editor.timeline import TimelineScroll
-from ui.editor.timeline_graphics import TimelineView   # <<< NOUVEAU
+from ui.editor.timeline import TimelineScroll
 from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
 from engine.exporter import Exporter
 from ui.editor.assets_panel import AssetsPanel
-from pathlib import Path
-from core.utils_timeline import clips_to_timeline_items, total_sequence_duration_ms
-
 
 
 # app/ui/main_window.py (extrait: classe EditorWindow)
@@ -34,7 +28,7 @@ class EditorWindow(QWidget):
 
         # --- Widgets principaux ---
         self.canvas = VideoCanvas()
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.controls = PlayerControls()
         self.controls.set_media(self.media)
@@ -52,9 +46,6 @@ class EditorWindow(QWidget):
         #self.inspector.setMinimumWidth(260)
         #self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
-        self.store.clipsChanged.connect(self._on_clips_changed)
-
-
         self.assets = AssetsPanel(self)
 
         #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -62,36 +53,37 @@ class EditorWindow(QWidget):
         #self.inspector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # --- Layout racine (UN SEUL) ---
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(6, 6, 6, 6)
-        main_layout.setSpacing(6)
+        #main_layout = QVBoxLayout(self)
+        #main_layout.setContentsMargins(6, 6, 6, 6)
+       # #main_layout.setSpacing(6)
 
-        top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(6)
+        #top_layout = QHBoxLayout()
+        #top_layout.setContentsMargins(0, 0, 0, 0)
+        #top_layout.setSpacing(6)
 
         # Colonne gauche : Import + Assets
-        left_col = QVBoxLayout()
-        left_col.setContentsMargins(0, 0, 0, 0)
-        left_col.setSpacing(6)
-        left_col.addWidget(self.assets, stretch=1)
+        #left_col = QVBoxLayout()
+        #left_col.setContentsMargins(0, 0, 0, 0)
+        #left_col.setSpacing(6)
+        #left_col.addWidget(self.assets, stretch=1)
 
         # Colonne centre : Vidéo + Controls
-        center_col = QVBoxLayout()
-        center_col.setContentsMargins(0, 0, 0, 0)
-        center_col.setSpacing(6)
-        center_col.addWidget(self.canvas, stretch=5)
-        center_col.addLayout(self.controls)
+        #center_col = QVBoxLayout()
+        #center_col.setContentsMargins(0, 0, 0, 0)
+        #center_col.setSpacing(6)
+        #center_col.addWidget(self.canvas, stretch=3)
+        #center_col.addLayout(self.controls)
 
         # Colonne droite : Inspector
-        right_col = QVBoxLayout()
-        right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.setSpacing(6)
-        right_col.addWidget(self.inspector, stretch=1)
+        #right_col = QVBoxLayout()
+        #right_col.setContentsMargins(0, 0, 0, 0)
+        #right_col.setSpacing(6)
+        #right_col.addWidget(self.inspector, stretch=1)
 
-        top_layout.addLayout(left_col, 0)
-        top_layout.addLayout(center_col, 1)
-        top_layout.addLayout(right_col, 0)
+        #top_layout.addLayout(left_col, 1)
+        #top_layout.addLayout(center_col, 3)
+        #top_layout.addLayout(right_col, 1)
+
 
         #main_layout.addLayout(top_layout, 5)
         #main_layout.addWidget(self.timeline_scroll, 1)
@@ -131,7 +123,7 @@ class EditorWindow(QWidget):
         main_splitter = QSplitter(Qt.Orientation.Vertical)
         
         main_splitter.addWidget(top_splitter)          # La zone supérieure complète
-        main_splitter.addWidget(self.timeline_view)  # La Timeline
+        main_splitter.addWidget(self.timeline_scroll)  # La Timeline
 
         main_splitter.setSizes([500, 100])
         
@@ -160,6 +152,8 @@ class EditorWindow(QWidget):
         self.controls.openRequested.connect(self._open_file)
         self.controls.exportRequested.connect(self._export)
         self.controls.zoomChanged.connect(self.timeline.set_zoom)
+        self.controls.seekRelativeRequested.connect(self.media.seek_relative_ms)
+
 
         # Inspector ↔ Store
         self.inspector.addTitleRequested.connect(lambda: (self.store.add_text_overlay(), self._refresh_overlay()))
