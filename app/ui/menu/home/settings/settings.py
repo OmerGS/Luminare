@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider
 from app.ui import styles
 from app.ui.components.title import Title
 from app.ui.components.menu_button import MenuButton
@@ -8,3 +8,7 @@ class SettingsMenu(QWidget):
         super().__init__()
         
         self.setStyleSheet(styles.WINDOW_STYLE)
+
+        settingsLayout = QVBoxLayout(self)
+
+        settingsLayout.addWidget()

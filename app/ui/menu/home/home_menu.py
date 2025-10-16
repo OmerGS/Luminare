@@ -6,6 +6,7 @@ from app.ui.components.menu_button import MenuButton
 from app.ui.components.project_button import ProjectButton
 from app.ui.components.leave_button import LeaveButton
 from app.ui.components.create_project_button import CreateProjectButton
+from app.ui.menu.home.project_select.project_select import ProjectSelect
 
 class MainMenu(QWidget):
     def __init__(self, go_to_editor, go_to_settings, go_to_home, vids):
@@ -20,29 +21,13 @@ class MainMenu(QWidget):
         layoutMenu.addWidget(MenuButton("Settings", go_to_settings))
         layoutMenu.addWidget(LeaveButton("Leave", self.close_app))
 
-        layoutCreate = QVBoxLayout(self)
-        layoutCreate.setSpacing(30)
-        layoutCreate.setContentsMargins(50, 50, 50, 50)
+        layoutOther = QVBoxLayout(self)
+        project_select = ProjectSelect(go_to_editor, vids)
+
+        layoutOther.addWidget(project_select)
 
         mainLayout.addLayout(layoutMenu, stretch=1)
-        mainLayout.addLayout(layoutCreate, stretch=8)
-        
-        # Titre (utilisation du composant Title)
-        layoutCreate.addWidget(Title("🎬 Luminare"))
-
-        # Boutons (utilisation du composant MenuButton)
-        layoutCreate.addWidget(CreateProjectButton("🖊️ Éditeur", go_to_editor), stretch=7 )
-
-        layoutCreate.addStretch()
-
-        layoutProject = QGridLayout(self)
-        cols = 5
-        for i, text in enumerate(vids):
-            row = i // cols
-            col = i % cols
-            layoutProject.addWidget(ProjectButton(text, go_to_editor), row, col)
-
-        layoutCreate.addLayout(layoutProject)
+        mainLayout.addLayout(layoutOther, stretch=8)
 
         
 
