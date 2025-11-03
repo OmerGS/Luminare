@@ -11,7 +11,6 @@ class PlayerControls(QHBoxLayout):
     def __init__(self):
         super().__init__()
         # boutons
-        self.btn_open  = QPushButton(self._icon(QStyle.SP_DialogOpenButton), " Ouvrir")
         self.btn_play  = QPushButton(self._icon(QStyle.SP_MediaPlay), "")
         self.btn_pause = QPushButton(self._icon(QStyle.SP_MediaPause), "")
         self.btn_stop  = QPushButton(self._icon(QStyle.SP_MediaStop), "")
@@ -27,7 +26,6 @@ class PlayerControls(QHBoxLayout):
         self.zoom_slider.setRange(10, 400); self.zoom_slider.setValue(80)
 
         # layout
-        self.addWidget(self.btn_open)
         self.addWidget(self.btn_play)
         self.addWidget(self.btn_pause)
         self.addWidget(self.btn_stop)
@@ -42,7 +40,6 @@ class PlayerControls(QHBoxLayout):
         self.addWidget(self.zoom_slider, 1)
 
         # signaux primaires
-        self.btn_open.clicked.connect(self.openRequested.emit)
         self.btn_export.clicked.connect(self.exportRequested.emit)
         self.zoom_slider.valueChanged.connect(lambda v: (self.zoom_lbl.setText(f"Zoom ({v}px/s)"),
                                                         self.zoomChanged.emit(v)))

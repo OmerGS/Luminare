@@ -112,3 +112,52 @@ class Store(QObject):
         if self._project.image_overlays:
             self._project.image_overlays.pop()
             self.overlayChanged.emit(); self.changed.emit()
+    
+    def add_video_clip_at(self, path: str, start_s: float, duration_s: float = 5.0):
+        """
+        Insère un nouveau clip vidéo à l'instant global `start_s` dans la séquence.
+        - Si `start_s` tombe au milieu d'un clip existant, on le split et on insère le nouveau au milieu.
+        - Si `start_s` est après la fin, on append à la fin.
+        """
+        start_s = max(0.0, float(start_s))
+        duration_s = max(0.0, float(duration_s))
+
+        # Cas séquence vide -> on ajoute simplement
+        if not self._project.clips:
+            newc = VideoClip(path=path, in_s=0.0, out_s=duration_s, duration_s=duration_s)
+            self._project.clips.append(newc)
+            self.clipsChanged.emit(); self.changed.emit()
+            return newc
+
+        idx, c, local = self.clip_at_global_time(start_s)  # (index, clip, temps_local_dans_clip)
+        newc = VideoClip(path=path, in_s=0.0, out_s=duration_s, duration_s=duration_s)
+
+        # Si start_s est au-delà de la fin de la séquence (idx == None)
+        if idx is None or c is None:
+            self._project.clips.append(newc)
+            self.clipsChanged.emit(); self.changed.emit()
+            return newc
+
+        # bornes du clip courant
+        c_start = c.in_s
+        c_end   = c.out_s if c.out_s > 0 else (c.in_s + c.duration_s)
+
+        # local = temps local dans la source = c.in_s + (t_global - acc)
+        # On veut savoir si on est exactement en bordure ou au milieu
+        EPS = 1e-6
+        if abs(local - c_start) < EPS:
+            # au tout début du clip courant -> on insère AVANT
+            self._project.clips.insert(idx, newc)
+        elif abs(local - c_end) < EPS:
+            # à la fin du clip courant -> on insère APRÈS
+            self._project.clips.insert(idx + 1, newc)
+        else:
+            # au milieu -> on split le clip courant, puis on insère entre les deux
+            # split_clip_at attend un temps 'local_s' RELATIF au clip (offset depuis c.in_s)
+            rel = local - c_start
+            left_idx, right_idx = self.split_clip_at(idx, rel)
+            # après split : left à idx, right à idx+1 → on insère newc entre
+            self._project.clips.insert(right_idx, newc)
+
+        self.clipsChanged.emit(); self.changed.emit()
+        return newc

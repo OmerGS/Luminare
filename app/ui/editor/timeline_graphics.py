@@ -1,13 +1,15 @@
-# app/ui/editor/timeline_graphics.py
 from __future__ import annotations
 from typing import List, Dict
+import json
 
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QObject
-from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter
+from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QCursor
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsRectItem,
     QGraphicsLineItem
 )
+from ui.components.assets_panel import MIME_IMAGE_ASSET, MIME_VIDEO_ASSET
+
 
 # --------------------------
 #  Items : Ruler + ClipItem
@@ -40,7 +42,7 @@ class RulerItem(QGraphicsItem):
 
         pen_axis = QPen(QColor(180, 180, 180), 1)
         p.setPen(pen_axis)
-        p.drawLine(r.left(), r.bottom()-1, r.right(), r.bottom()-1)
+        p.drawLine(r.left(), r.bottom() - 1, r.right(), r.bottom() - 1)
 
         # graduations
         p.setPen(QColor(60, 60, 60))
@@ -51,36 +53,40 @@ class RulerItem(QGraphicsItem):
         secs = int(max(1, self._w / self._px))
         for s in range(secs + 1):
             x = s * self._px
-            # grande graduation chaque 1s
-            p.drawLine(x, r.bottom()-1, x, r.bottom()-8)
-            # sous-graduations (quart de seconde)
+            p.drawLine(x, r.bottom() - 1, x, r.bottom() - 8)
             step = max(1, self._px // 4)
             for k in range(1, 4):
                 xx = x + k * step
                 if xx >= r.right():
                     break
-                p.drawLine(xx, r.bottom()-1, xx, r.bottom()-5)
+                p.drawLine(xx, r.bottom() - 1, xx, r.bottom() - 5)
             if s % 5 == 0:
                 p.drawText(x + 3, r.top() + 10, f"{s}s")
 
 
+# --------------------------
+#  Clip Item amélioré
+# --------------------------
+
 class ClipItem(QObject, QGraphicsRectItem):
-    """
-    Bloc clip déplaçable horizontalement.
-    Émet moved(new_start_s) lorsque sa position change.
-    """
+    """Bloc clip redimensionnable horizontalement (type CapCut)."""
+    resized = Signal(float, float, float)  # (start_s, in_s, duration)
     moved = Signal(float)
 
     def __init__(self, model: Dict, px_per_sec: int, scene_width: float, lane_y: float):
         QObject.__init__(self)
         QGraphicsRectItem.__init__(self)
         self.setZValue(10)
+
         self.model = model
         self._px = px_per_sec
         self._scene_w = scene_width
-        self._snap_s = 0.1  # snap 100ms
         self._lane_y = lane_y
+        self._dragging_handle = None
+        self._drag_start_x = 0
+        self._orig_rect = None
 
+        # taille et position
         w = max(2.0, float(model["duration"]) * self._px)
         x = float(model["start"]) * self._px
         self.setRect(0, 0, w, 36.0)
@@ -90,55 +96,100 @@ class ClipItem(QObject, QGraphicsRectItem):
         color = QColor(model.get("color", "#7fb3ff"))
         self.setBrush(QBrush(color))
         self.setPen(QPen(QColor(40, 40, 40), 1))
-
-        self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+        self.setAcceptHoverEvents(True)
+
+        # poignées gauche/droite
+        self.handle_left = QGraphicsRectItem(self)
+        self.handle_right = QGraphicsRectItem(self)
+        for h in (self.handle_left, self.handle_right):
+            h.setBrush(QBrush(QColor("#555")))
+            h.setPen(Qt.NoPen)
+            h.setRect(0, 0, 6, 36)
+            h.setZValue(20)
+        self._update_handles()
+
+    def _update_handles(self):
+        r = self.rect()
+        self.handle_left.setPos(0, 0)
+        self.handle_right.setPos(r.width() - 6, 0)
+
+    # --- hover pour curseur ---
+    def hoverMoveEvent(self, event):
+        if self.handle_left.isUnderMouse() or self.handle_right.isUnderMouse():
+            self.setCursor(QCursor(Qt.SizeHorCursor))
+        else:
+            self.setCursor(QCursor(Qt.ArrowCursor))
+        super().hoverMoveEvent(event)
+
+    # --- gestion souris ---
+    def mousePressEvent(self, event):
+        if self.handle_left.isUnderMouse():
+            self._dragging_handle = "left"
+        elif self.handle_right.isUnderMouse():
+            self._dragging_handle = "right"
+        else:
+            self._dragging_handle = None
+
+        self._drag_start_x = event.scenePos().x()
+        self._orig_rect = QRectF(self.rect())
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self._dragging_handle:
+            return super().mouseMoveEvent(event)
+
+        delta_x = event.scenePos().x() - self._drag_start_x
+        new_rect = QRectF(self._orig_rect)
+
+        # Redimensionnement gauche
+        if self._dragging_handle == "left":
+            new_w = new_rect.width() - delta_x
+            if new_w >= 10:
+                new_rect.setWidth(new_w)
+                self.setRect(new_rect)
+                self.setX(self.x() + delta_x)
+                # mise à jour logique
+                delta_s = delta_x / float(self._px)
+                self.model["in_s"] = max(0.0, self.model.get("in_s", 0.0) + delta_s)
+                self.model["start"] = max(0.0, self.model["start"] + delta_s)
+                self.model["duration"] = max(0.1, new_w / self._px)
+
+        # Redimensionnement droite
+        elif self._dragging_handle == "right":
+            new_w = new_rect.width() + delta_x
+            if new_w >= 10:
+                new_rect.setWidth(new_w)
+                self.setRect(new_rect)
+                self.model["duration"] = max(0.1, new_w / self._px)
+
+        self._update_handles()
+        self.resized.emit(self.model["start"], self.model.get("in_s", 0.0), self.model["duration"])
+
+    def mouseReleaseEvent(self, event):
+        self._dragging_handle = None
+        super().mouseReleaseEvent(event)
 
     def update_metrics(self, px_per_sec: int, scene_width: float):
+        """Met à jour la taille du clip si zoom ou resize."""
         self._px = max(10, int(px_per_sec))
         self._scene_w = float(scene_width)
         w = max(2.0, float(self.model["duration"]) * self._px)
         x = float(self.model["start"]) * self._px
         self.setRect(0, 0, w, 36.0)
         self.setPos(QPointF(x, self._lane_y))
+        self._update_handles()
 
-    def itemChange(self, change, value):
-        # restreindre au déplacement horizontal + snap
-        if change == QGraphicsItem.ItemPositionChange:
-            new_pos: QPointF = value.toPointF()
-            new_pos.setY(self._lane_y)
 
-            # clamp largeur scène
-            max_x = max(0.0, self._scene_w - self.rect().width())
-            new_x = max(0.0, min(new_pos.x(), max_x))
-
-            # snap
-            s = new_x / float(self._px)
-            if self._snap_s > 0:
-                s = round(s / self._snap_s) * self._snap_s
-            new_pos.setX(s * self._px)
-            return new_pos
-
-        if change == QGraphicsItem.ItemPositionHasChanged:
-            # mettre à jour le modèle et émettre
-            start_s = max(0.0, self.pos().x() / float(self._px))
-            self.model["start"] = start_s
-            self.moved.emit(start_s)
-
-        return super().itemChange(change, value)
 # --------------------------
-#  Vue/Scene
+#  Vue/Scene principale
 # --------------------------
 
 class TimelineView(QGraphicsView):
-    """
-    Timeline graphique :
-      - ruler (graduations)
-      - clips déplaçables (ordre temporel visuel)
-      - playhead
-    """
-    seekRequested = Signal(int)          # ms
-    clipMoved = Signal(int, float)       # index, new_start_s
+    """Timeline graphique avec clips redimensionnables."""
+    seekRequested = Signal(int)           # ms
+    clipMoved = Signal(int, float)        # index, new_start_s
+    clipDropRequested = Signal(str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -147,36 +198,32 @@ class TimelineView(QGraphicsView):
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setAcceptDrops(True)
 
         self._px_per_sec = 80
         self._height = 160.0
         self._total_ms = 0
-        self._models: List[Dict] = []
-        self._items: List[ClipItem] = []
+        self._models = []
+        self._items = []
 
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
-        # géométrie scène
         self._rebuild_scene_rect()
-
-        # ruler
         self._ruler = RulerItem(self._px_per_sec, self._scene_width())
         self._scene.addItem(self._ruler)
 
-        # playhead (ligne rouge)
-        self._playhead = QGraphicsLineItem()
-        self._playhead.setPen(QPen(QColor("red"), 2))
-        self._playhead.setZValue(100)
-        self._scene.addItem(self._playhead)
-        self._update_playhead_x(0)
-
-        # fond des lanes
         self._lane_bg = QGraphicsRectItem(0, 32, self._scene_width(), self._height - 40)
         self._lane_bg.setBrush(QBrush(QColor(250, 250, 250)))
         self._lane_bg.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
         self._lane_bg.setZValue(-5)
         self._scene.addItem(self._lane_bg)
+
+        self._playhead = QGraphicsLineItem()
+        self._playhead.setPen(QPen(QColor("red"), 2))
+        self._playhead.setZValue(100)
+        self._scene.addItem(self._playhead)
+        self._update_playhead_x(0)
 
     # ---- helpers géométrie ----
     def _scene_width(self) -> float:
@@ -193,19 +240,16 @@ class TimelineView(QGraphicsView):
         self._rebuild_scene_rect()
         self._ruler.set_width(self._scene_width())
         self._lane_bg.setRect(0, 32, self._scene_width(), self._height - 40)
-        # repositionner les items selon la nouvelle largeur (au cas où)
         for it in self._items:
             it.update_metrics(self._px_per_sec, self._scene_width())
 
     def set_zoom(self, px_per_sec: int):
         self._px_per_sec = max(10, int(px_per_sec))
         self._ruler.set_px_per_sec(self._px_per_sec)
-        self.set_total_duration(self._total_ms)  # met à jour largeur scène
-        # remettre les clips à la bonne taille/pos
+        self.set_total_duration(self._total_ms)
         for it in self._items:
             it.update_metrics(self._px_per_sec, self._scene_width())
-        # playhead x
-        self._update_playhead_x(self._current_ms if hasattr(self, "_current_ms") else 0)
+        self._update_playhead_x(getattr(self, "_current_ms", 0))
 
     def set_playhead_ms(self, ms: int):
         self._current_ms = max(0, int(ms))
@@ -216,10 +260,7 @@ class TimelineView(QGraphicsView):
         self._playhead.setLine(x, 0, x, self._height)
 
     def set_clips(self, items: List[Dict]):
-        """
-        items: [{start:sec, duration:sec, label:str, color:"#RRGGBB"}, ...]
-        """
-        # purge anciens items clips
+        """items: [{start:sec, duration:sec, label:str, color:"#RRGGBB"}, ...]"""
         for it in self._items:
             self._scene.removeItem(it)
         self._items.clear()
@@ -229,36 +270,67 @@ class TimelineView(QGraphicsView):
         for idx, vm in enumerate(self._models):
             it = ClipItem(vm, self._px_per_sec, self._scene_width(), lane_y)
             self._scene.addItem(it)
-            # Naïf : on empile verticalement si plusieurs (optionnel)
             lane_y += 42.0
 
-            # texte du clip (optionnel : simple)
             label = vm.get("label", "")
             if label:
-                text_color = QColor(20, 20, 20)
-                pen = QPen(text_color)
                 text_item = self._scene.addText(label)
-                text_item.setDefaultTextColor(text_color)
+                text_item.setDefaultTextColor(QColor(20, 20, 20))
                 text_item.setPos(it.pos().x() + 6, it.pos().y() + 8)
                 text_item.setZValue(20)
-                # on « accroche » le label visuellement : on recalcule à chaque move
-                def _sync_label(new_start_s: float, t_item=text_item, item_ref=it):
-                    t_item.setPos(item_ref.pos().x() + 6, item_ref.pos().y() + 8)
-                it.moved.connect(_sync_label)
 
-            # propager mouvement vers le monde extérieur
-            def _emit_moved(new_start_s: float, index=idx):
-                self.clipMoved.emit(index, new_start_s)
-            it.moved.connect(_emit_moved)
+                # ✅ Correction ici : ignorer les floats du signal resized
+                def _sync_label(*_, t_item=text_item, item_ref=it):
+                    if hasattr(t_item, "setPos"):
+                        t_item.setPos(item_ref.pos().x() + 6, item_ref.pos().y() + 8)
+                it.resized.connect(_sync_label)
 
+            it.moved.connect(lambda new_s, index=idx: self.clipMoved.emit(index, new_s))
             self._items.append(it)
 
     # ---- interactions ----
     def mousePressEvent(self, e):
         pos_scene = self.mapToScene(e.pos())
-        # si on clique sur le fond (pas un clip), on cherche
         if not self.itemAt(e.pos()):
             ms = int(max(0.0, pos_scene.x() / self._px_per_sec) * 1000.0)
             self.seekRequested.emit(ms)
             self._update_playhead_x(ms)
         super().mousePressEvent(e)
+
+    # ---- DnD ----
+    def _scene_pos_to_seconds(self, ev) -> float:
+        try:
+            pt_vp = ev.position().toPoint()
+        except AttributeError:
+            pt_vp = ev.pos()
+        x_scene = self.mapToScene(pt_vp).x()
+        return max(0.0, x_scene / float(self._px_per_sec))
+
+    def dragEnterEvent(self, e):
+        md = e.mimeData()
+        if md.hasFormat(MIME_VIDEO_ASSET) or md.hasFormat(MIME_IMAGE_ASSET):
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dropEvent(self, e):
+        md = e.mimeData()
+        if md.hasFormat(MIME_VIDEO_ASSET):
+            data = json.loads(bytes(md.data(MIME_VIDEO_ASSET)).decode("utf-8"))
+            path = data.get("path")
+            start_s = self._scene_pos_to_seconds(e)
+            if path:
+                self.clipDropRequested.emit(path, start_s)
+            e.acceptProposedAction()
+            return
+
+        if md.hasFormat(MIME_IMAGE_ASSET):
+            data = json.loads(bytes(md.data(MIME_IMAGE_ASSET)).decode("utf-8"))
+            path = data.get("path")
+            start_s = self._scene_pos_to_seconds(e)
+            if path:
+                self.clipDropRequested.emit(path, start_s)
+            e.acceptProposedAction()
+            return
+
+        e.ignore()
