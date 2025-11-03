@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from app.ui import styles
 from app.ui.components.title import Title
@@ -13,4 +13,16 @@ class SettingsMenu(QWidget):
 
         settingsLayout = QVBoxLayout(self)
 
-        settingsLayout.addWidget(VolumeSlider(orientation=Qt.Horizontal, interval=1))
+        volumeLayout = QHBoxLayout()
+
+        volumeLabel = QLabel("Volume")
+        volumeLabel.setStyleSheet("color: white; font-size: 16px; margin-right: 10px;")
+
+        self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=1000)
+
+        volumeLayout.addWidget(volumeLabel)
+        volumeLayout.addWidget(self.volume_slider, stretch=1)
+
+        settingsLayout.addLayout(volumeLayout)
+
+        settingsLayout.addStretch()

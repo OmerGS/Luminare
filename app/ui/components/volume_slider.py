@@ -4,6 +4,7 @@ from app.ui import styles
 
 class VolumeSlider(QSlider):
     def __init__(self, orientation, interval):
-        super().__init__(orientation, tickInterval= interval)
+        super().__init__(orientation)
+        self.setTickInterval(interval)
         self.setStyleSheet(styles.VOLUME_SLIDER)
         
