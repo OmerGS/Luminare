@@ -7,6 +7,8 @@ from app.ui.components.project_button import ProjectButton
 from app.ui.components.leave_button import LeaveButton
 from app.ui.components.create_project_button import CreateProjectButton
 from app.ui.menu.home.project_select.project_select import ProjectSelect
+from app.ui.menu.home.settings.settings import SettingsMenu
+from app.ui.components.volume_slider import VolumeSlider
 
 class MainMenu(QWidget):
     def __init__(self, go_to_editor, go_to_settings, go_to_home, vids):
@@ -23,6 +25,7 @@ class MainMenu(QWidget):
 
         layoutOther = QVBoxLayout(self)
         project_select = ProjectSelect(go_to_editor, vids)
+        settings = SettingsMenu(go_to_settings)
 
         layoutOther.addWidget(project_select)
 
