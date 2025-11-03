@@ -19,6 +19,16 @@ def display_project(proj):
     print(f"Output             : {proj.output}")
     print(f"Audio normalisé    : {proj.audio_normalize}")
 
+    print(f"\nRessources importées ({len(proj.imported_assets)}) :")
+    if proj.imported_assets:
+        for i, asset in enumerate(proj.imported_assets, 1):
+            name = asset.get("name", "N/A")
+            path = asset.get("path", "N/A")
+            asset_type = asset.get("type", "N/A")
+            print(f"  Asset {i} ({asset_type}) : {name} | Path: {path}")
+    else:
+        print("Aucun import trouvée.")
+
     # Clips
     print(f"\nClips ({len(proj.clips)}) :")
     if proj.clips:

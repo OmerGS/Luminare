@@ -96,7 +96,7 @@ def main():
     ensure_cache_dirs(root)
     quiet_qt_multimedia_logs()
 
-    from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget, QVBoxLayout
+    from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget, QVBoxLayout, QListWidgetItem
     from app.ui.menu.home.home_menu import MainMenu
     from app.ui.editor.main_window import EditorWindow
     from core.store import Store

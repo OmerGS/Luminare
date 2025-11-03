@@ -1,6 +1,6 @@
 from typing import Callable
 import os
-from app.types import ImportTypes
+from custom_types.ImportTypes import ImportTypes
 from core.save_system.serializers import LMPRJChunkedSerializer
 from core import project as Project
 
@@ -48,11 +48,12 @@ class ProjectAPI:
         return len(proj.clips)
     
     @staticmethod
-    def add_import(filename: str, import_path: str, type: ImportTypes) -> str:
+    def add_import(filename: str, import_path: str, asset_name: str, type: ImportTypes) -> str:
         """Ajoute un import au projet spécifié (en modifiant le fichier .lmprj)."""
         
         def update_callback(project):
             new_asset = {
+                "name": asset_name,
                 "path": import_path,
                 "type": type.value
             }

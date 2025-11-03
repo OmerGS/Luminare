@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QTabWidget, QLabel, QSizePolicy, QStyle, QApplication
 )
 import os
-
+from core.store import Store   
 from ui.components.media_list import MIME_MEDIA_ASSET, MediaListWidget 
 
 class AssetsPanel(QWidget):
@@ -13,6 +13,7 @@ class AssetsPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.store = Store()
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         root = QVBoxLayout(self)
@@ -25,11 +26,10 @@ class AssetsPanel(QWidget):
         def _get_icon(standard_icon):
             return QApplication.style().standardIcon(standard_icon)
 
-        self.tab_audio  = MediaListWidget(MIME_MEDIA_ASSET)
-        self.tab_images = MediaListWidget(MIME_MEDIA_ASSET)
-        self.tab_text   = MediaListWidget(MIME_MEDIA_ASSET)
-        self.tab_video  = MediaListWidget(MIME_MEDIA_ASSET)
-
+        self.tab_audio  = MediaListWidget(store=self.store, mime_type_for_drag=MIME_MEDIA_ASSET)
+        self.tab_images = MediaListWidget(store=self.store, mime_type_for_drag=MIME_MEDIA_ASSET)
+        self.tab_text   = MediaListWidget(store=self.store, mime_type_for_drag=MIME_MEDIA_ASSET)
+        self.tab_video  = MediaListWidget(store=self.store, mime_type_for_drag=MIME_MEDIA_ASSET)
 
         icon_video = _get_icon(QStyle.SP_MediaPlay) 
         self.tabs.addTab(self.tab_video, icon_video, "Video")
