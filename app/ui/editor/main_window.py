@@ -5,7 +5,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QS
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
 from ui.editor.timeline_graphics import TimelineView
-from ui.editor.timeline import TimelineScroll       # timeline images / titres
 from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
@@ -33,7 +32,6 @@ class EditorWindow(QWidget):
         self.controls.set_media(self.media)
 
         self.timeline_view = TimelineView(self)      # timeline vidéo
-        self.timeline_scroll = TimelineScroll(self)  # timeline images + titres
 
         self.inspector = Inspector(self)
         self.inspector.setMinimumWidth(220)
@@ -62,8 +60,7 @@ class EditorWindow(QWidget):
         tl_layout = QVBoxLayout(timelines_panel)
         tl_layout.setContentsMargins(0, 0, 0, 0)
         tl_layout.setSpacing(2)
-        tl_layout.addWidget(self.timeline_view, stretch=3)     # Timeline vidéo
-        tl_layout.addWidget(self.timeline_scroll, stretch=1)   # Timeline images/titres
+        tl_layout.addWidget(self.timeline_view, stretch=1)     # Timeline vidéo
 
         # --- Splitter vertical (haut/bas) ---
         main_splitter = QSplitter(Qt.Vertical, self)
@@ -83,15 +80,13 @@ class EditorWindow(QWidget):
         self.canvas.set_project(self.store.project())
 
         # --- Timeline vidéo ↔ player ---
-        self.timeline_view.seekRequested.connect(self.media.seek_ms)
+        self.timeline_view.seekRequested.connect(self._on_smart_seek)
         self.media.positionChanged.connect(self.timeline_view.set_playhead_ms)
         self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
 
         # --- Timeline images/titres : DnD d’images ---
-        self.timeline_scroll.timeline.imageDropped.connect(self.on_timeline_drop_image)
+        self.timeline_view.clipDropRequested.connect(self._on_timeline_drop)
 
-        # --- DnD vidéo depuis assets vers timeline vidéo ---
-        self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
 
         # --- Assets panel events ---
         if hasattr(self.assets, "addImageRequested"):
@@ -99,7 +94,7 @@ class EditorWindow(QWidget):
         if hasattr(self.assets, "addVideoRequested"):
             self.assets.addVideoRequested.connect(self._add_video_at_playhead)
         if hasattr(self.assets, "loadVideoRequested"):  # ✅ nouveau signal du bouton "Charger dans le lecteur"
-            self.assets.loadVideoRequested.connect(self._open_video_from_assets)
+            self.assets.loadVideoRequested.connect(self._open_video_from_assets)    
 
         # --- Erreurs et timecodes ---
         self.media.errorOccurred.connect(self._on_media_error)
@@ -111,21 +106,17 @@ class EditorWindow(QWidget):
         self.controls.exportRequested.connect(self._export)
 
         # --- Inspector ↔ Store ---
-        self.inspector.addTitleRequested.connect(lambda: (self.store.add_text_overlay(), self._refresh_overlay()))
-        self.inspector.removeTitleRequested.connect(lambda: (self.store.remove_last_text_overlay(), self._refresh_overlay()))
-        self.inspector.titleTextChanged.connect(lambda txt: (self.store.update_last_overlay_text(txt), self._refresh_overlay()))
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
         self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
 
         # --- Store → UI ---
-        self.store.overlayChanged.connect(self._refresh_overlay)
-        self.store.clipsChanged.connect(self._on_clips_changed)
+        self.store.overlayChanged.connect(self._refresh_all_timeline_items)
+        self.store.clipsChanged.connect(self._refresh_all_timeline_items)
 
         # --- Initialisation ---
-        self._refresh_overlay()
-        self._on_clips_changed()
+        self._refresh_all_timeline_items()
 
     # ---------- Actions ----------
     def _open_file(self):
@@ -147,6 +138,7 @@ class EditorWindow(QWidget):
 
         print(f"[INFO] Chargement vidéo : {path}")
         self.media.load(QUrl.fromLocalFile(path))
+        self._current_media_path = path
         self.media.play()
 
         def _once_set_clip(d_ms: int):
@@ -156,7 +148,6 @@ class EditorWindow(QWidget):
                 pass
             dur_s = max(0.1, d_ms / 1000.0)
             self.store.add_video_clip(path, in_s=0.0, out_s=0.0, duration=dur_s)
-            self._on_clips_changed()
 
         self.media.durationChanged.connect(_once_set_clip)
 
@@ -180,47 +171,44 @@ class EditorWindow(QWidget):
     def _apply_title_start_from_playhead(self):
         ms = self.media.position_ms()
         self.store.set_last_overlay_start(ms / 1000.0)
-        self._refresh_overlay()
 
     def _apply_title_end_from_playhead(self):
         ms = self.media.position_ms()
         self.store.set_last_overlay_end(ms / 1000.0)
-        self._refresh_overlay()
 
-    def _refresh_overlay(self):
-        """Rafraîchit les titres et images sur la timeline dédiée"""
-        from pathlib import Path as _P
-        proj = self.store.project()
-        self.canvas.set_project(proj)
+    def _refresh_all_timeline_items(self):
+        """
+        Rafraîchit TOUS les items (clips, images, titres) sur la TimelineView.
+        """
+        project = self.store.project()
+        
+        # 1. Mettre à jour la timeline graphique
+        self.timeline_view.set_project_data(project) 
+        
+        # 2. Mettre à jour le canvas
+        self.canvas.set_project(project)
 
-        # timeline images/titres (TimelineScroll)
-        self.timeline_scroll.timeline.set_overlays([
-            {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
-            for ov in proj.text_overlays
-        ])
-        self.timeline_scroll.timeline.set_images([
-            {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
-            for o in proj.image_overlays
-        ])
 
-    # ---------- Clips / Timeline ----------
-    def _on_clips_changed(self):
-        clips = self.store.project().clips
-        items = clips_to_timeline_items(clips)
-        self.timeline_view.set_clips(items)
-        total_ms = total_sequence_duration_ms(clips)
-        if total_ms > 0:
-            self.timeline_view.set_total_duration(total_ms)
+    def _on_timeline_drop(self, path: str, start_s: float):
+        """
+        Gère un drop depuis l'AssetsPanel, qu'importe le type.
+        """
+        # On pourrait faire une détection de type plus robuste
+        ext = (path.split(".")[-1] or "").lower()
+        if ext in ["mp4", "mov", "mkv", "avi"]:
+            # C'est une vidéo
+            self.store.add_video_clip_at(path, start_s, duration_s=5.0)
+            # self._on_clips_changed() # <- Plus besoin, Store émettra clipsChanged
+        elif ext in ["png", "jpg", "jpeg", "webp"]:
+            # C'est une image
+            self.store.add_image_overlay(path, start_s, duration=3.0)
+            # self._refresh_overlay() # <- Plus besoin, Store émettra overlayChanged
+            self.media.seek_ms(int(start_s * 1000))
 
-    def _add_video_clip_at_seconds(self, path: str, start_s: float):
-        self.store.add_video_clip(path, in_s=0.0, out_s=0.0, duration=0.0)
-        self._on_clips_changed()
-        if hasattr(self.timeline_view, "ensure_visible_time"):
-            self.timeline_view.ensure_visible_time(start_s)
 
     def _add_video_at_playhead(self, path: str):
         start_s = self.media.position_ms() / 1000.0
-        self._add_video_clip_at_seconds(path, start_s)
+        self.store.add_video_clip_at(path, start_s, duration_s=5.0)
 
     # ---------- Images ----------
     def _add_image_at_playhead(self, path: str):
@@ -229,6 +217,52 @@ class EditorWindow(QWidget):
 
     def on_timeline_drop_image(self, path: str, start_s: float):
         self.store.add_image_overlay(path, start_s, duration=3.0)
-        self._refresh_overlay()
         self.canvas.set_project(self.store.project())
         self.media.seek_ms(int(start_s * 1000))
+
+    def _on_smart_seek(self, global_ms: int):
+        """
+        Le "chef d'orchestre".
+        Trouve le bon clip à la bonne position et dit au MediaController de le charger.
+        """
+        global_s = global_ms / 1000.0
+        
+        # 1. Demander au Store quel clip se trouve à cet instant
+        #    (C'est la fonction que vous avez ajoutée dans store.py)
+        idx, clip, local_s = self.store.clip_at_global_time(global_s)
+
+        if not clip:
+            # On a cliqué après la fin, ou la timeline est vide
+            self.media.stop() # Ou self.media.pause()
+            self._current_media_path = None
+            return
+
+        # 2. Convertir le temps local en millisecondes
+        local_ms = int(local_s * 1000.0)
+        
+        # 3. Le clip trouvé est-il déjà chargé ?
+        if clip.path == self._current_media_path:
+            # OUI : Il suffit de chercher (seek)
+            self.media.seek_ms(local_ms)
+        else:
+            # NON : Il faut charger le nouveau clip ET chercher
+            print(f"[DEBUG] Changement de clip : {clip.path}")
+            self._current_media_path = clip.path
+            self.media.load(QUrl.fromLocalFile(clip.path))
+            
+            # ATTENTION : QMediaPlayer charge de manière asynchrone.
+            # On ne peut pas appeler seek_ms() immédiatement.
+            # On doit attendre que le média soit chargé.
+            
+            def _seek_when_loaded():
+                try:
+                    # Se désinscrire pour ne pas appeler en boucle
+                    self.media.durationChanged.disconnect(_seek_when_loaded)
+                except Exception:
+                    pass # Déjà déconnecté
+                
+                print(f"[DEBUG] Média chargé, seek à {local_ms}ms")
+                self.media.seek_ms(local_ms)
+                
+            # Le signal 'durationChanged' est un bon indicateur que le média est prêt
+            self.media.durationChanged.connect(_seek_when_loaded)

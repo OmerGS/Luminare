@@ -161,3 +161,34 @@ class Store(QObject):
 
         self.clipsChanged.emit(); self.changed.emit()
         return newc
+    
+
+    def clip_at_global_time(self, global_s: float) -> tuple:
+        """
+        Trouve le clip à un temps global (en secondes) sur la timeline.
+        Retourne (index, clip_objet, temps_local_dans_clip)
+        """
+        current_time_s = 0.0
+        for idx, clip in enumerate(self._project.clips):
+            # Assure que la durée est valide
+            duration = getattr(clip, 'duration_s', 0.0)
+            if duration <= 0.0:
+                duration = getattr(clip, 'out_s', 0.0) - getattr(clip, 'in_s', 0.0)
+                if duration <= 0.0:
+                    duration = 1.0 # Failsafe
+            
+            clip_end_time = current_time_s + duration
+            
+            # Si le temps global est DANS ce clip
+            if global_s < clip_end_time:
+                local_s = (global_s - current_time_s) + getattr(clip, 'in_s', 0.0)
+                return idx, clip, local_s
+            
+            current_time_s = clip_end_time
+            
+        # Si on est après tous les clips (ou si la timeline est vide)
+        if self._project.clips:
+            last_clip = self._project.clips[-1]
+            return len(self._project.clips) - 1, last_clip, last_clip.out_s
+        
+        return None, None, 0.0

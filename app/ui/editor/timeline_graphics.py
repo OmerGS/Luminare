@@ -1,12 +1,13 @@
 from __future__ import annotations
 from typing import List, Dict
 import json
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QObject
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QCursor
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsRectItem,
-    QGraphicsLineItem
+    QGraphicsLineItem, QGraphicsTextItem
 )
 from ui.components.assets_panel import MIME_IMAGE_ASSET, MIME_VIDEO_ASSET
 
@@ -191,6 +192,13 @@ class TimelineView(QGraphicsView):
     clipMoved = Signal(int, float)        # index, new_start_s
     clipDropRequested = Signal(str, float)
 
+    LANE_DEFINITIONS = [
+        {"name": "Vidéo", "y": 50.0, "color": QColor(245, 245, 245)},
+        {"name": "Images", "y": 92.0, "color": QColor(240, 245, 240)},
+        {"name": "Texte", "y": 134.0, "color": QColor(240, 240, 245)},
+    ]
+    LANE_HEIGHT = 36.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setRenderHints(self.renderHints() | QPainter.Antialiasing)
@@ -213,17 +221,23 @@ class TimelineView(QGraphicsView):
         self._ruler = RulerItem(self._px_per_sec, self._scene_width())
         self._scene.addItem(self._ruler)
 
-        self._lane_bg = QGraphicsRectItem(0, 32, self._scene_width(), self._height - 40)
-        self._lane_bg.setBrush(QBrush(QColor(250, 250, 250)))
-        self._lane_bg.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
-        self._lane_bg.setZValue(-5)
-        self._scene.addItem(self._lane_bg)
-
         self._playhead = QGraphicsLineItem()
         self._playhead.setPen(QPen(QColor("red"), 2))
         self._playhead.setZValue(100)
         self._scene.addItem(self._playhead)
         self._update_playhead_x(0)
+
+        self._lane_bgs = []
+        for lane_def in self.LANE_DEFINITIONS:
+            y = lane_def["y"]
+            
+            # Le rectangle de fond pour la piste
+            bg_rect = QGraphicsRectItem(0, y, self._scene_width(), self.LANE_HEIGHT)
+            bg_rect.setBrush(QBrush(lane_def["color"]))
+            bg_rect.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
+            bg_rect.setZValue(-5)
+            self._scene.addItem(bg_rect)
+            self._lane_bgs.append(bg_rect)
 
     # ---- helpers géométrie ----
     def _scene_width(self) -> float:
@@ -231,15 +245,26 @@ class TimelineView(QGraphicsView):
         return max(1200.0, secs * self._px_per_sec)
 
     def _rebuild_scene_rect(self):
-        self._scene.setSceneRect(QRectF(0, 0, self._scene_width(), self._height))
-        self.setMinimumHeight(int(self._height) + 40)
+        # ✅ On calcule la hauteur totale en fonction des pistes
+        total_height = 180.0 # Hauteur par défaut
+        if self.LANE_DEFINITIONS:
+            last_lane = self.LANE_DEFINITIONS[-1]
+            total_height = last_lane["y"] + self.LANE_HEIGHT + 20.0 # y + hauteur + marge
+            
+        self._scene.setSceneRect(QRectF(0, 0, self._scene_width(), total_height))
+        self.setMinimumHeight(int(total_height) + 40) # +40 pour la règle et la scrollbar
 
-    # ---- API publique ----
     def set_total_duration(self, total_ms: int):
         self._total_ms = max(0, int(total_ms))
         self._rebuild_scene_rect()
         self._ruler.set_width(self._scene_width())
-        self._lane_bg.setRect(0, 32, self._scene_width(), self._height - 40)
+        
+        # ✅ On met à jour TOUS les fonds de pistes
+        scene_w = self._scene_width()
+        for i, lane_def in enumerate(self.LANE_DEFINITIONS):
+            if i < len(self._lane_bgs):
+                self._lane_bgs[i].setRect(0, lane_def["y"], scene_w, self.LANE_HEIGHT)
+
         for it in self._items:
             it.update_metrics(self._px_per_sec, self._scene_width())
 
@@ -257,36 +282,106 @@ class TimelineView(QGraphicsView):
 
     def _update_playhead_x(self, ms: int):
         x = (ms / 1000.0) * self._px_per_sec
-        self._playhead.setLine(x, 0, x, self._height)
+        self._playhead.setLine(x, 0, x, self.sceneRect().height())
 
-    def set_clips(self, items: List[Dict]):
-        """items: [{start:sec, duration:sec, label:str, color:"#RRGGBB"}, ...]"""
+    def set_project_data(self, project):
+        # ... (le code pour vider _items et _scene) ...
         for it in self._items:
             self._scene.removeItem(it)
         self._items.clear()
-        self._models = list(items)
-
-        lane_y = 50.0
-        for idx, vm in enumerate(self._models):
-            it = ClipItem(vm, self._px_per_sec, self._scene_width(), lane_y)
-            self._scene.addItem(it)
-            lane_y += 42.0
-
-            label = vm.get("label", "")
-            if label:
-                text_item = self._scene.addText(label)
+        
+        # Piste 1: Clips Vidéo
+        lane_y = self.LANE_DEFINITIONS[0]["y"]
+        
+        # ⬇️ ⬇️ ⬇️ NOUS AVONS BESOIN DE CETTE VARIABLE ⬇️ ⬇️ ⬇️
+        global_start_s = 0.0
+        
+        for clip_model in project.clips:
+            # Calcul de la durée (sécurisé)
+            duration = getattr(clip_model, 'duration_s', 0.0)
+            if duration <= 0.0:
+                duration = getattr(clip_model, 'out_s', 0.0) - getattr(clip_model, 'in_s', 0.0)
+            duration = max(0.1, duration) # Durée minimale
+            
+            model_dict = {
+                # ❌ AVANT: "start": clip_model.start_s,
+                "start": global_start_s, # ✅ APRÈS
+                "duration": duration,
+                "in_s": getattr(clip_model, 'in_s', 0.0),
+                "label": Path(clip_model.path).stem,
+                "color": "#7fb3ff" # Couleur pour les vidéos
+            }
+            it = ClipItem(model_dict, self._px_per_sec, self._scene_width(), lane_y)
+            
+            # ... (votre code pour ajouter le label au ClipItem) ...
+            if model_dict["label"]:
+                text_item = QGraphicsTextItem(model_dict["label"], it)
                 text_item.setDefaultTextColor(QColor(20, 20, 20))
-                text_item.setPos(it.pos().x() + 6, it.pos().y() + 8)
+                text_item.setPos(6, 8)
+                text_item.setZValue(20)
+            
+            self._scene.addItem(it)
+            self._items.append(it)
+            
+            # ⬇️ ⬇️ ⬇️ METTRE À JOUR LE TEMPS GLOBAL ⬇️ ⬇️ ⬇️
+            global_start_s += duration
+
+        # Piste 2: Overlays d'images
+        lane_y = self.LANE_DEFINITIONS[1]["y"]
+        for img_model in project.image_overlays:
+            duration = max(0.1, img_model.end - img_model.start)
+            model_dict = {
+                "start": img_model.start, # ✅ C'est correct, les overlays ont un 'start'
+                "duration": duration,
+                "label": f"IMG: {Path(img_model.path).stem}",
+                "color": "#a9ff7f" # Couleur pour les images
+            }
+            it = ClipItem(model_dict, self._px_per_sec, self._scene_width(), lane_y)
+            # ... (code pour le label) ...
+            if model_dict["label"]:
+                text_item = QGraphicsTextItem(model_dict["label"], it)
+                text_item.setDefaultTextColor(QColor(20, 20, 20))
+                text_item.setPos(6, 8)
+                text_item.setZValue(20)
+                
+            self._scene.addItem(it)
+            self._items.append(it)
+
+        # Piste 3: Overlays de texte
+        lane_y = self.LANE_DEFINITIONS[2]["y"]
+        for txt_model in project.text_overlays:
+            duration = max(0.1, txt_model.end - txt_model.start)
+            model_dict = {
+                "start": txt_model.start, # ✅ C'est correct
+                "duration": duration,
+                "label": txt_model.text or "Titre",
+                "color": "#ffaf7f" # Couleur pour les textes
+            }
+            it = ClipItem(model_dict, self._px_per_sec, self._scene_width(), lane_y)
+            # ... (code pour le label) ...
+            if model_dict["label"]:
+                text_item = QGraphicsTextItem(model_dict["label"], it)
+                text_item.setDefaultTextColor(QColor(20, 20, 20))
+                text_item.setPos(6, 8)
                 text_item.setZValue(20)
 
-                # ✅ Correction ici : ignorer les floats du signal resized
-                def _sync_label(*_, t_item=text_item, item_ref=it):
-                    if hasattr(t_item, "setPos"):
-                        t_item.setPos(item_ref.pos().x() + 6, item_ref.pos().y() + 8)
-                it.resized.connect(_sync_label)
-
-            it.moved.connect(lambda new_s, index=idx: self.clipMoved.emit(index, new_s))
+            self._scene.addItem(it)
             self._items.append(it)
+
+        total_s = global_start_s
+        
+        # ... MAIS un overlay peut être plus long, vérifions
+        for img_model in project.image_overlays:
+            total_s = max(total_s, img_model.end)
+        for txt_model in project.text_overlays:
+            total_s = max(total_s, txt_model.end)
+
+        # On ajoute une marge de 10s à la fin pour avoir de l'espace
+        total_s += 10.0
+        
+        print(f"[DEBUG] Nouvelle durée totale calculée: {total_s}s")
+        # On notifie la timeline de sa nouvelle durée
+        self.set_total_duration(int(total_s * 1000))
 
     # ---- interactions ----
     def mousePressEvent(self, e):
