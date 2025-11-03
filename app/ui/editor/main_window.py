@@ -8,18 +8,20 @@ from ui.editor.timeline import TimelineScroll
 from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.store import Store
-from engine.exporter import Exporter
+from core.export.export_service import ExportService
+from core.export.export_profile import DEFAULT_PROFILES
+from core.export.engine_interface import RenderError
 from ui.editor.assets_panel import AssetsPanel
 
 class EditorWindow(QWidget):
-    def __init__(self, store: Store, parent=None): 
+    def __init__(self, store: Store, export_service: ExportService, parent=None):
         super().__init__()
         self.resize(1280, 720)
 
         # back
         self.media = MediaController(self)
         self.store = store
-        self.exporter = Exporter()
+        self.exporter = export_service
 
         # centre vidéo (canvas)
         self.canvas = VideoCanvas()
@@ -171,12 +173,36 @@ class EditorWindow(QWidget):
 
     def _export(self):
         proj = self.store.project()
-        src = proj.clips[0].path if proj.clips else (str(Path("assets") / "Fluid_Sim_Hue_Test.mp4"))
+        
+        default_name = proj.name.strip() or "output"
+        default_path = str(Path.cwd() / "exports" / f"{default_name}.mp4")
+        
+        out_path_str, _ = QFileDialog.getSaveFileName(
+            self, "Exporter la vidéo", default_path, "Vidéos MP4 (*.mp4)"
+        )
+        
+        if not out_path_str:
+            return
+
+        out_path = Path(out_path_str)
+        
+        profile = DEFAULT_PROFILES["h264_medium"]
+        
+        fallback_src = proj.clips[0].path if proj.clips else (str(Path("assets") / "Fluid_Sim_Hue_Test.mp4"))
+
         try:
-            out_path = self.exporter.export_from_project(proj, fallback_src=src)
-            QMessageBox.information(self, "Export", f"Fichier exporté : {out_path}")
+            self.exporter.export_project(
+                proj=proj,
+                out_path=out_path,
+                profile=profile,
+                fallback_src=fallback_src
+            )
+            QMessageBox.information(self, "Exportation terminée", f"Fichier exporté avec succès : \n{out_path}")
+            
+        except RenderError as e:
+            QMessageBox.critical(self, "Échec de l'exportation", f"Une erreur de rendu est survenue:\n{e}")
         except Exception as e:
-            QMessageBox.critical(self, "Export échoué", str(e))
+            QMessageBox.critical(self, "Échec de l'exportation", f"Une erreur inattendue est survenue:\n{e}")
 
     def _on_media_error(self, text: str):
         if text:
