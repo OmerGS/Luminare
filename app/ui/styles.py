@@ -2,7 +2,7 @@
 TITLE_STYLE = """
     font-size: 32px;
     font-weight: bold;
-    color: #ffffff;
+    color: #BB44F0;
     background-color: transparent;
 """
 
@@ -84,6 +84,23 @@ VOLUME_SLIDER="""
         margin: -2px 0; /* handle is placed by default on the contents rect of the groove. Expand outside the groove */
         border-radius: 3px;
     }
+"""
+
+CHANGE_FOLDER_BUTTON="""
+        QPushButton {
+        background-color: #a0a0a0;
+        color : black;
+        border-radius: 12px;
+        padding : 12px 24px;
+        font-size: 16px;
+    }
+    QPushButton:hover {
+        background-color : #808080;
+    }
+    QPushButton:pressed {
+        background-color: #666666;
+    }
+
 """
 
 THEME_BUTTON="""

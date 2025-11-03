@@ -6,7 +6,7 @@ from app.ui.components.menu_button import MenuButton
 from app.ui.components.volume_slider import VolumeSlider
 
 class SettingsMenu(QWidget):
-    def __init__(self, go_to_menu):
+    def __init__(self):
         super().__init__()
         
         self.setStyleSheet(styles.WINDOW_STYLE)
@@ -18,7 +18,7 @@ class SettingsMenu(QWidget):
         volumeLabel = QLabel("Volume")
         volumeLabel.setStyleSheet("color: white; font-size: 16px; margin-right: 10px;")
 
-        self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=1000)
+        self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=100)
 
         volumeLayout.addWidget(volumeLabel)
         volumeLayout.addWidget(self.volume_slider, stretch=1)
