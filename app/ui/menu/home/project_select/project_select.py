@@ -16,10 +16,10 @@ class ProjectSelect(QWidget):
         layoutCreate.setContentsMargins(50, 50, 50, 50)
 
                 # Titre (utilisation du composant Title)
-        layoutCreate.addWidget(Title("🎬 Luminare"))
+        layoutCreate.addWidget(Title("Luminare"))
 
         # Boutons (utilisation du composant MenuButton)
-        layoutCreate.addWidget(CreateProjectButton("🖊️ Éditeur", go_to_editor), stretch=7 )
+        layoutCreate.addWidget(CreateProjectButton("Éditeur", go_to_editor), stretch=7 )
 
         layoutCreate.addStretch()
 

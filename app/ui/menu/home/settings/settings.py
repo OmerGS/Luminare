@@ -42,5 +42,4 @@ class SettingsMenu(QWidget):
         settingsLayout.addLayout(pathLayout)
         settingsLayout.addLayout(volumeLayout)
 
-
         settingsLayout.addStretch()

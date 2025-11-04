@@ -1,24 +1,23 @@
-# app/style.py
 TITLE_STYLE = """
     font-size: 32px;
     font-weight: bold;
-    color: #BB44F0;
+    color: white;
     background-color: transparent;
 """
 
 BUTTON_STYLE = """
     QPushButton {
-        background-color: #3498db;
+        background-color: #3d3d3d;
         color: white;
         border-radius: 12px;
         padding: 12px 24px;
         font-size: 18px;
     }
     QPushButton:hover {
-        background-color: #2980b9;
+        background-color: #4c4c4c;
     }
     QPushButton:pressed {
-        background-color: #1f618d;
+        background-color: #5f5f5f;
     }
 """
 
@@ -31,16 +30,16 @@ PROJECT_BUTTON_STYLE="""
         font-size: 18px;
     }
     QPushButton:hover {
-        background-color: #A9A9A9;
+        background-color: #1f1f1f;
     }
     QPushButton:pressed {
-        background-color: #808080;
+        background-color: #272727;
     }
 """
 
 LEAVE_BUTTON_STYLE="""
     QPushButton {
-        background-color: #FF0000;
+        background-color: #8b2222;
         color : white;
         border-radius: 12px;
         padding : 12px 24px;
@@ -56,10 +55,10 @@ LEAVE_BUTTON_STYLE="""
 
 CREATE_PROJECT_BUTTON_STYLE="""
     QPushButton{
-        background: red;
+        background: #41e5e5;
         color: white;
         border-radius: 12px;
-        padding: 40px 60px;
+        padding: 60px 60px;
         font-size: 30px;
     }
     QPushButton:hover {
@@ -73,7 +72,7 @@ CREATE_PROJECT_BUTTON_STYLE="""
 VOLUME_SLIDER="""
     QSlider::groove:horizontal{
         border: 1px solid #999999;
-        height: 8px;
+        height: 20px;
         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #B1B1B1, stop:1 #c4c4c4);
         margin: 2px 0;
     }
@@ -109,6 +108,17 @@ THEME_BUTTON="""
     }    
 """
 
+# Modifié pour un fond sombre
 WINDOW_STYLE = """
-    background-color: #2c3e50;
+    /* Style pour le widget racine (la fenêtre) */
+    QWidget {
+        background-color: #1f1f1f;
+    }
+    
+    /* Style global pour tous les QLabels */
+    QLabel {
+        background-color: black; /* Fond noir */
+        color: white; /* Texte blanc pour être lisible */
+    }
 """
+

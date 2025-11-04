@@ -1,6 +1,8 @@
 # app/main.py
 import sys
 from pathlib import Path
+from ui import styles
+
 
 # S'assurer que le répertoire racine est dans le sys.path
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +19,8 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Luminare")
         self.resize(600, 400)
+
+        self.setStyleSheet(styles.WINDOW_STYLE)
 
         # Création du QStackedWidget
         self.stacked = QStackedWidget()
@@ -41,6 +45,7 @@ class MainWindow(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     window = MainWindow()
     window.showMaximized()
     sys.exit(app.exec())
