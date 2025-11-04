@@ -216,4 +216,3 @@ class Store(QObject):
 
         # par sécurité (t > total): pointer fin du dernier clip
         return len(clips) - 1, clips[-1], self._clip_duration_s(clips[-1])
-

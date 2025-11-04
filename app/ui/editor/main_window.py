@@ -103,21 +103,17 @@ class EditorWindow(QWidget):
             self.controls.splitRequested.connect(self.split_current_clip)
 
         # --- Inspector ↔ Store ---
-        self.inspector.addTitleRequested.connect(lambda: (self.store.add_text_overlay(), self._refresh_overlay()))
-        self.inspector.removeTitleRequested.connect(lambda: (self.store.remove_last_text_overlay(), self._refresh_overlay()))
-        self.inspector.titleTextChanged.connect(lambda txt: (self.store.update_last_overlay_text(txt), self._refresh_overlay()))
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
         self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
 
         # --- Store → UI ---
-        self.store.overlayChanged.connect(self._refresh_overlay)
-        self.store.clipsChanged.connect(self._on_clips_changed)
+        self.store.overlayChanged.connect(self._refresh_all_timeline_items)
+        self.store.clipsChanged.connect(self._refresh_all_timeline_items)
 
         # --- Initialisation ---
-        self._refresh_overlay()
-        self._on_clips_changed()
+        self._refresh_all_timeline_items()
 
         # resize d’un clip vidéo (timeline → store)
         self.timeline_view.clipResized.connect(self._on_clip_resized)
@@ -143,7 +139,6 @@ class EditorWindow(QWidget):
     def _apply_title_start_from_playhead(self):
         ms = self.seq.position_ms()
         self.store.set_last_overlay_start(ms / 1000.0)
-        self._refresh_overlay()
 
     def _apply_title_end_from_playhead(self):
         ms = self.seq.position_ms()
@@ -223,7 +218,6 @@ class EditorWindow(QWidget):
 
     def on_timeline_drop_image(self, path: str, start_s: float):
         self.store.add_image_overlay(path, start_s, duration=3.0)
-        self._refresh_overlay()
         self.canvas.set_project(self.store.project())
         self.seq.seek_ms(int(start_s * 1000))
 
