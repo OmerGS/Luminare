@@ -161,3 +161,59 @@ class Store(QObject):
 
         self.clipsChanged.emit(); self.changed.emit()
         return newc
+    
+    # --- À coller DANS la classe Store (core/store.py) ---
+
+    def _clip_duration_s(self, clip) -> float:
+        """Durée effective d'un clip en secondes."""
+        try:
+            if getattr(clip, "duration_s", None) not in (None, 0.0):
+                return float(clip.duration_s)
+            # fallback si le modèle n'a pas duration_s explicitement
+            return max(0.0, float(clip.out_s) - float(clip.in_s))
+        except Exception:
+            return 0.0
+
+    def clip_boundaries(self):
+        """
+        Retourne les bornes (start_s, end_s) séquentielles de tous les clips
+        en supposant un montage linéaire sans trous (accumulation).
+        """
+        bounds = []
+        acc = 0.0
+        for c in self.project().clips:
+            dur = self._clip_duration_s(c)
+            bounds.append((acc, acc + dur))
+            acc += dur
+        return bounds
+
+    def total_duration_s(self) -> float:
+        """Durée totale de la séquence (somme des durées des clips)."""
+        acc = 0.0
+        for c in self.project().clips:
+            acc += self._clip_duration_s(c)
+        return acc
+
+    def clip_at_global_time(self, t_s: float):
+        """
+        Trouve le clip qui recouvre le temps global t_s (en secondes).
+        Retourne (index, clip, local_s) où local_s est le temps relatif à CE clip.
+        Si t_s est à l'extrême fin, retourne le dernier clip et local_s = sa durée.
+        Si aucun clip, retourne (-1, None, 0.0).
+        """
+        clips = self.project().clips
+        if not clips:
+            return -1, None, 0.0
+
+        t = max(0.0, float(t_s))
+        acc = 0.0
+        for i, c in enumerate(clips):
+            dur = self._clip_duration_s(c)
+            if t < acc + dur or (i == len(clips) - 1 and t <= acc + dur):
+                local = max(0.0, min(t - acc, dur))
+                return i, c, local
+            acc += dur
+
+        # par sécurité (t > total): pointer fin du dernier clip
+        return len(clips) - 1, clips[-1], self._clip_duration_s(clips[-1])
+

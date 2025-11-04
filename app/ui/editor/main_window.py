@@ -1,13 +1,14 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QSizePolicy, QSplitter
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QSizePolicy, QSplitter
 
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
 from ui.editor.timeline_graphics import TimelineView
-from ui.editor.timeline import TimelineScroll       # timeline images / titres
 from ui.editor.inspector import Inspector
+
 from core.media_controller import MediaController
+from core.sequence_player import SequencePlayer
 from core.store import Store
 from engine.exporter import Exporter
 from ui.components.assets_panel import AssetsPanel
@@ -21,8 +22,9 @@ class EditorWindow(QWidget):
         self.resize(1280, 720)
 
         # --- Backends ---
-        self.media = MediaController(self)
-        self.store = Store(self)
+        self.media = MediaController(self)        # player 1-fichier
+        self.store = Store(self)                  # modèle
+        self.seq = SequencePlayer(self.media, self.store, self)  # séquence multi-clips
         self.exporter = Exporter()
 
         # --- Widgets principaux ---
@@ -30,10 +32,9 @@ class EditorWindow(QWidget):
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.controls = PlayerControls()
-        self.controls.set_media(self.media)
+        self.controls.set_media(self.seq)
 
-        self.timeline_view = TimelineView(self)      # timeline vidéo
-        self.timeline_scroll = TimelineScroll(self)  # timeline images + titres
+        self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
 
         self.inspector = Inspector(self)
         self.inspector.setMinimumWidth(220)
@@ -57,18 +58,10 @@ class EditorWindow(QWidget):
         top_splitter.addWidget(self.inspector)
         top_splitter.setSizes([220, 820, 240])
 
-        # --- Panel des timelines (empile les 2 timelines) ---
-        timelines_panel = QWidget(self)
-        tl_layout = QVBoxLayout(timelines_panel)
-        tl_layout.setContentsMargins(0, 0, 0, 0)
-        tl_layout.setSpacing(2)
-        tl_layout.addWidget(self.timeline_view, stretch=3)     # Timeline vidéo
-        tl_layout.addWidget(self.timeline_scroll, stretch=1)   # Timeline images/titres
-
         # --- Splitter vertical (haut/bas) ---
         main_splitter = QSplitter(Qt.Vertical, self)
         main_splitter.addWidget(top_splitter)
-        main_splitter.addWidget(timelines_panel)
+        main_splitter.addWidget(self.timeline_view)
         main_splitter.setSizes([520, 240])
 
         # --- Layout racine ---
@@ -77,38 +70,37 @@ class EditorWindow(QWidget):
         root.setSpacing(6)
         root.addWidget(main_splitter)
 
-        # --- Connexions principales ---
-        self.media.frameImageAvailable.connect(self.canvas.set_frame)
-        self.media.positionChanged.connect(self.canvas.set_playhead_ms)
+        # --- Connexions principales (via le SÉQUENCEUR) ---
+        self.seq.frameImageAvailable.connect(self.canvas.set_frame)
+        self.seq.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
 
-        # --- Timeline vidéo ↔ player ---
-        self.timeline_view.seekRequested.connect(self.media.seek_ms)
-        self.media.positionChanged.connect(self.timeline_view.set_playhead_ms)
+        # --- Timeline ↔ séquenceur ---
+        self.timeline_view.seekRequested.connect(self.seq.seek_ms)
+        self.seq.positionChanged.connect(self.timeline_view.set_playhead_ms)
         self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
 
-        # --- Timeline images/titres : DnD d’images ---
-        self.timeline_scroll.timeline.imageDropped.connect(self.on_timeline_drop_image)
-
-        # --- DnD vidéo depuis assets vers timeline vidéo ---
+        # --- DnD depuis timeline ---
         self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
+        self.timeline_view.imageDropRequested.connect(self.on_timeline_drop_image)
 
-        # --- Assets panel events ---
+        # --- DnD / actions depuis le panneau assets ---
         if hasattr(self.assets, "addImageRequested"):
             self.assets.addImageRequested.connect(self._add_image_at_playhead)
         if hasattr(self.assets, "addVideoRequested"):
             self.assets.addVideoRequested.connect(self._add_video_at_playhead)
-        if hasattr(self.assets, "loadVideoRequested"):  # ✅ nouveau signal du bouton "Charger dans le lecteur"
-            self.assets.loadVideoRequested.connect(self._open_video_from_assets)
 
-        # --- Erreurs et timecodes ---
-        self.media.errorOccurred.connect(self._on_media_error)
-        self.media.durationChanged.connect(self.controls.set_duration)
-        self.media.positionChanged.connect(self.controls.set_position)
+        # --- Erreurs et timecodes (via le séquenceur) ---
+        self.seq.errorOccurred.connect(self._on_media_error)
+        self.seq.durationChanged.connect(self.controls.set_duration)   # durée totale séquence
+        self.seq.positionChanged.connect(self.controls.set_position)   # position globale
 
-        # --- Contrôles ---
-        self.controls.openRequested.connect(self._open_file)
+        # --- Export ---
         self.controls.exportRequested.connect(self._export)
+
+        # --- Bouton ✂ Couper ---
+        if hasattr(self.controls, "splitRequested"):
+            self.controls.splitRequested.connect(self.split_current_clip)
 
         # --- Inspector ↔ Store ---
         self.inspector.addTitleRequested.connect(lambda: (self.store.add_text_overlay(), self._refresh_overlay()))
@@ -127,39 +119,10 @@ class EditorWindow(QWidget):
         self._refresh_overlay()
         self._on_clips_changed()
 
-    # ---------- Actions ----------
-    def _open_file(self):
-        start_dir = str(Path.cwd() / "assets")
-        f, _ = QFileDialog.getOpenFileName(
-            self, "Ouvrir une vidéo", start_dir,
-            "Vidéos (*.mp4 *.mov *.mkv *.avi);;Tous les fichiers (*.*)"
-        )
-        if not f:
-            return
+        # resize d’un clip vidéo (timeline → store)
+        self.timeline_view.clipResized.connect(self._on_clip_resized)
 
-        self._open_video_from_assets(f)
-
-    def _open_video_from_assets(self, path: str):
-        """Charge une vidéo dans le lecteur + ajoute le clip à la timeline."""
-        if not path or not Path(path).exists():
-            QMessageBox.warning(self, "Erreur", "Le fichier vidéo n’existe pas.")
-            return
-
-        print(f"[INFO] Chargement vidéo : {path}")
-        self.media.load(QUrl.fromLocalFile(path))
-        self.media.play()
-
-        def _once_set_clip(d_ms: int):
-            try:
-                self.media.durationChanged.disconnect(_once_set_clip)
-            except Exception:
-                pass
-            dur_s = max(0.1, d_ms / 1000.0)
-            self.store.add_video_clip(path, in_s=0.0, out_s=0.0, duration=dur_s)
-            self._on_clips_changed()
-
-        self.media.durationChanged.connect(_once_set_clip)
-
+    # ---------- Export ----------
     def _export(self):
         proj = self.store.project()
         src = proj.clips[0].path if proj.clips else str(Path("assets") / "Fluid_Sim_Hue_Test.mp4")
@@ -178,57 +141,119 @@ class EditorWindow(QWidget):
         self.store.set_filters(brightness=b, contrast=c, saturation=s, vignette=v)
 
     def _apply_title_start_from_playhead(self):
-        ms = self.media.position_ms()
+        ms = self.seq.position_ms()
         self.store.set_last_overlay_start(ms / 1000.0)
         self._refresh_overlay()
 
     def _apply_title_end_from_playhead(self):
-        ms = self.media.position_ms()
+        ms = self.seq.position_ms()
         self.store.set_last_overlay_end(ms / 1000.0)
         self._refresh_overlay()
 
     def _refresh_overlay(self):
-        """Rafraîchit les titres et images sur la timeline dédiée"""
+        """Rafraîchit les 3 pistes (vidéo/images/titres) dans la timeline unique."""
         from pathlib import Path as _P
         proj = self.store.project()
         self.canvas.set_project(proj)
 
-        # timeline images/titres (TimelineScroll)
-        self.timeline_scroll.timeline.set_overlays([
-            {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
-            for ov in proj.text_overlays
-        ])
-        self.timeline_scroll.timeline.set_images([
-            {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
+        video_items = clips_to_timeline_items(proj.clips)  # [{start,duration,label,color}, ...]
+        image_items = [
+            {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
             for o in proj.image_overlays
-        ])
+        ]
+        text_items = [
+            {"start": ov.start, "duration": max(0.1, (ov.end - ov.start)), "label": (ov.text or "Titre"), "color": "#d4b5ff"}
+            for ov in proj.text_overlays
+        ]
 
-    # ---------- Clips / Timeline ----------
-    def _on_clips_changed(self):
-        clips = self.store.project().clips
-        items = clips_to_timeline_items(clips)
-        self.timeline_view.set_clips(items)
-        total_ms = total_sequence_duration_ms(clips)
+        self.timeline_view.set_tracks(video_items, image_items, text_items)
+
+        total_ms = total_sequence_duration_ms(proj.clips)
         if total_ms > 0:
             self.timeline_view.set_total_duration(total_ms)
 
+    # ---------- Clips / Timeline ----------
+    def _on_clips_changed(self):
+        self._refresh_overlay()  # on a désormais une seule API pour alimenter les 3 pistes
+
+    def _probe_duration_and_add(self, path: str, place_s: float):
+        """
+        Sonde la durée réelle du fichier (via MediaController) et ajoute le clip à la bonne place.
+        Évite les 5s fixes.
+        """
+        tmp = MediaController(self)
+
+        def _on_err(msg: str):
+            try:
+                tmp.errorOccurred.disconnect(_on_err)
+                tmp.durationChanged.disconnect(_on_dur)
+            except Exception:
+                pass
+            QMessageBox.warning(self, "Erreur média", msg)
+
+        def _on_dur(ms: int):
+            try:
+                tmp.errorOccurred.disconnect(_on_err)
+                tmp.durationChanged.disconnect(_on_dur)
+            except Exception:
+                pass
+            dur_s = max(0.1, ms / 1000.0)
+            if hasattr(self.store, "add_video_clip_at"):
+                self.store.add_video_clip_at(path, place_s, duration_s=dur_s)
+            else:
+                self.store.add_video_clip(path, in_s=0.0, out_s=dur_s, duration=dur_s)
+            self._on_clips_changed()
+
+        tmp.errorOccurred.connect(_on_err)
+        tmp.durationChanged.connect(_on_dur)
+        tmp.load(QUrl.fromLocalFile(path))  # charge en silencieux juste pour récupérer la durée
+
     def _add_video_clip_at_seconds(self, path: str, start_s: float):
-        self.store.add_video_clip(path, in_s=0.0, out_s=0.0, duration=0.0)
-        self._on_clips_changed()
-        if hasattr(self.timeline_view, "ensure_visible_time"):
-            self.timeline_view.ensure_visible_time(start_s)
+        """Ajoute un clip vidéo AU TEMPS demandé avec sa vraie durée."""
+        self._probe_duration_and_add(path, start_s)
 
     def _add_video_at_playhead(self, path: str):
-        start_s = self.media.position_ms() / 1000.0
-        self._add_video_clip_at_seconds(path, start_s)
+        start_s = self.seq.position_ms() / 1000.0
+        self._probe_duration_and_add(path, start_s)
 
     # ---------- Images ----------
     def _add_image_at_playhead(self, path: str):
-        start_s = self.media.position_ms() / 1000.0
+        start_s = self.seq.position_ms() / 1000.0
         self.on_timeline_drop_image(path, start_s)
 
     def on_timeline_drop_image(self, path: str, start_s: float):
         self.store.add_image_overlay(path, start_s, duration=3.0)
         self._refresh_overlay()
         self.canvas.set_project(self.store.project())
-        self.media.seek_ms(int(start_s * 1000))
+        self.seq.seek_ms(int(start_s * 1000))
+
+    # ---------- Timeline resize → Store (vidéo) ----------
+    def _on_clip_resized(self, idx: int, start_s: float, in_s: float, duration_s: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.clips):
+            c = proj.clips[idx]
+            try:
+                c.in_s = float(in_s)
+                c.duration_s = max(0.1, float(duration_s))
+                c.out_s = c.in_s + c.duration_s
+            except Exception:
+                pass
+            if hasattr(self.store, "clipsChanged"):
+                self.store.clipsChanged.emit()
+            if hasattr(self.store, "changed"):
+                self.store.changed.emit()
+            self._refresh_overlay()
+
+    # ---------- Action "✂ Couper au playhead" ----------
+    def split_current_clip(self):
+        ms = self.seq.position_ms()
+        clips = self.store.project().clips
+        acc = 0.0
+        for i, c in enumerate(clips):
+            dur = float(getattr(c, "duration_s", 0.0) or (getattr(c, "out_s", 0.0) - getattr(c, "in_s", 0.0)))
+            if acc <= ms/1000.0 <= acc + dur:
+                local = ms/1000.0 - acc
+                self.store.split_clip_at(i, local)
+                self._refresh_overlay()
+                return
+            acc += dur
