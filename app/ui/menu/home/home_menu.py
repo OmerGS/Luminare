@@ -25,7 +25,7 @@ class MainMenu(QWidget):
 
         self.layoutOther = QStackedLayout(self)
         self.project_select = ProjectSelect(go_to_editor, vids)
-        self.settings = SettingsMenu()
+        self.settings = SettingsMenu("testPath", "testPath2", self.show_settings)
 
         self.layoutOther.addWidget(self.project_select)
         self.layoutOther.addWidget(self.settings)
