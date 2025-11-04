@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from app.ui import styles
 from app.ui.components.change_export_folder_button import ChangeExportFolderButton
@@ -18,15 +18,13 @@ class SettingsMenu(QWidget):
         pathLayout = QVBoxLayout()
 
         volumeLabel = QLabel("Volume")
-        volumeLabel.setStyleSheet("color: white; font-size: 16px; margin-right: 10px;")
+        volumeLabel.setStyleSheet("padding-top : 50px")
 
         self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=100)
 
         exportLabel = QLabel("export path")
-        exportLabel.setStyleSheet("color: white; font-size: 16px; margin-right: 10px;")
 
         saveLabel = QLabel("save path")
-        saveLabel.setStyleSheet("color: white; font-size: 16px; margin-right: 10px;")
 
         self.change_export = ChangeExportFolderButton(exportPath, openFileSearch)
         self.change_save = ChangeSaveFolderButton(savePath, openFileSearch)

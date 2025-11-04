@@ -70,16 +70,19 @@ CREATE_PROJECT_BUTTON_STYLE="""
 """
 
 VOLUME_SLIDER="""
+    QSlider{
+        padding-top: 50px;
+    }
     QSlider::groove:horizontal{
         border: 1px solid #999999;
         height: 20px;
         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #B1B1B1, stop:1 #c4c4c4);
-        margin: 2px 0;
+        margin: 2px 2px;
     }
     QSlider::handle:horizontal {
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #b4b4b4, stop:1 #8f8f8f);
         border: 1px solid #5c5c5c;
-        width: 18px;
+        width: 20px;
         margin: -2px 0; /* handle is placed by default on the contents rect of the groove. Expand outside the groove */
         border-radius: 3px;
     }
@@ -117,7 +120,7 @@ WINDOW_STYLE = """
     
     /* Style global pour tous les QLabels */
     QLabel {
-        background-color: black; /* Fond noir */
+        background-color: #1f1f1f;
         color: white; /* Texte blanc pour être lisible */
     }
 """
