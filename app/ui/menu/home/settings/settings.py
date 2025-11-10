@@ -30,7 +30,14 @@ class SettingsMenu(QWidget):
         self.change_save = ChangeSaveFolderButton(savePath, openFileSearch)
 
         volumeLayout.addWidget(volumeLabel)
-        volumeLayout.addWidget(self.volume_slider,stretch=10, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        slider_layout = QHBoxLayout()
+
+        slider_layout.addWidget(self.volume_slider, stretch=1)
+
+        slider_layout.addStretch(1)
+
+        volumeLayout.addLayout(slider_layout)
 
         pathLayout.addWidget(exportLabel)
         pathLayout.addWidget(self.change_export,)
