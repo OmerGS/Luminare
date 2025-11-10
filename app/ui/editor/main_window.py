@@ -33,6 +33,9 @@ class EditorWindow(QWidget):
 
         self.controls = PlayerControls()
         self.controls.set_media(self.seq)
+        self._sel_in_s = None
+        self._sel_out_s = None
+
 
         self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
 
@@ -102,6 +105,17 @@ class EditorWindow(QWidget):
         if hasattr(self.controls, "splitRequested"):
             self.controls.splitRequested.connect(self.split_current_clip)
 
+        # --- Bouton Supprimer ---
+        self._selected_segment = None  # tuple (index, start_s, duration_s) ou None
+
+        self.timeline_view.segmentSelected.connect(self._on_segment_selected)
+        self.timeline_view.segmentCleared.connect(self._on_segment_cleared)
+
+        # Bouton "Suppr (refermer)" -> supprime le segment sélectionné
+        if hasattr(self.controls, "deleteSelectionCloseRequested"):
+            self.controls.deleteSelectionCloseRequested.connect(self._delete_selected_segment)
+
+
         # --- Inspector ↔ Store ---
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
@@ -166,6 +180,48 @@ class EditorWindow(QWidget):
         total_ms = total_sequence_duration_ms(proj.clips)
         if total_ms > 0:
             self.timeline_view.set_total_duration(total_ms)
+
+    def _refresh_all_timeline_items(self):
+        """
+        Reconstruit la timeline unique (3 pistes : Vidéo / Images / Textes)
+        à partir de l'état actuel du Store, puis met à jour la durée totale.
+        """
+        from pathlib import Path as _P
+        proj = self.store.project()
+
+        # PISTE VIDÉO : transforme les clips du projet en items pour la timeline
+        video_items = clips_to_timeline_items(proj.clips)  # [{start,duration,label,color}, ...]
+
+        # PISTE IMAGES
+        image_items = [
+            {
+                "start": o.start,
+                "duration": max(0.1, (o.end - o.start)),
+                "label": f"img:{_P(o.path).stem}",
+                "color": "#9be7a5",
+            }
+            for o in proj.image_overlays
+        ]
+
+        # PISTE TEXTES
+        text_items = [
+            {
+                "start": ov.start,
+                "duration": max(0.1, (ov.end - ov.start)),
+                "label": (ov.text or "Titre"),
+                "color": "#d4b5ff",
+            }
+            for ov in proj.text_overlays
+        ]
+
+        # Pousse dans la vue (timeline unique)
+        self.timeline_view.set_tracks(video_items, image_items, text_items)
+
+        # Met à jour la durée totale de séquence pour le ruler / zoom / scroll
+        total_ms = total_sequence_duration_ms(proj.clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
+
 
     # ---------- Clips / Timeline ----------
     def _on_clips_changed(self):
@@ -251,3 +307,33 @@ class EditorWindow(QWidget):
                 self._refresh_overlay()
                 return
             acc += dur
+
+    def _on_segment_selected(self, idx: int, start_s: float, duration_s: float):
+        self._selected_segment = (int(idx), float(start_s), float(duration_s))
+
+    def _on_segment_cleared(self):
+        self._selected_segment = None
+
+    def _delete_selected_segment(self):
+        if not self._selected_segment:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Suppression", "Clique d'abord un segment vidéo dans la timeline.")
+            return
+
+        idx, start_s, duration_s = self._selected_segment
+        a = float(start_s)
+        b = float(start_s + duration_s)
+
+        try:
+            # refermer le trou
+            self.store.delete_segment(a, b, close_gap=True)
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Suppression", f"Erreur: {e}")
+            return
+
+        # reset sélection UI & refresh
+        self._selected_segment = None
+        # la timeline se rafraîchit comme d'habitude via clipsChanged -> _refresh_overlay/_on_clips_changed
+        if hasattr(self.store, "clipsChanged"):
+            self.store.clipsChanged.emit()

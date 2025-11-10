@@ -7,7 +7,12 @@ class PlayerControls(QHBoxLayout):
     openRequested = Signal()
     exportRequested = Signal()
     zoomChanged = Signal(int)
-    splitRequested = Signal()  # <-- NEW : signal pour "couper au playhead"
+    splitRequested = Signal()
+    markInRequested = Signal()
+    markOutRequested = Signal()
+    deleteSelectionCloseRequested = Signal()
+    deleteSelectionGapRequested = Signal()
+ 
 
     def __init__(self):
         super().__init__()
@@ -17,6 +22,15 @@ class PlayerControls(QHBoxLayout):
         self.btn_stop   = QPushButton(self._icon(QStyle.SP_MediaStop), "")
         self.btn_split  = QPushButton("✂ Couper")  # <-- NEW : bouton ciseaux
         self.btn_export = QPushButton("Exporter (MVP)")
+
+        self.btn_del_close = QPushButton("Suppr (refermer)")
+
+        self.addWidget(self.btn_del_close)
+
+       
+        self.btn_del_close.clicked.connect(self.deleteSelectionCloseRequested.emit)
+       
+
 
         self.btn_split.setToolTip("Couper le clip au niveau de la tête de lecture")
 

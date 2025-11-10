@@ -1,13 +1,12 @@
 from __future__ import annotations
 from typing import List, Dict
 import json
-from pathlib import Path
 
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QObject
 from PySide6.QtGui import QPen, QBrush, QColor, QPainter, QCursor
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsRectItem,
-    QGraphicsLineItem, QGraphicsTextItem
+    QGraphicsLineItem
 )
 
 from ui.components.assets_panel import MIME_IMAGE_ASSET, MIME_VIDEO_ASSET
@@ -39,11 +38,9 @@ class RulerItem(QGraphicsItem):
 
     def paint(self, p: QPainter, option, widget=None):
         r = self.boundingRect()
-        base = QColor(240, 240, 240)
-        p.fillRect(r, base)
+        p.fillRect(r, QColor(240, 240, 240))
 
-        pen_axis = QPen(QColor(180, 180, 180), 1)
-        p.setPen(pen_axis)
+        p.setPen(QPen(QColor(180, 180, 180), 1))
         p.drawLine(r.left(), r.bottom() - 1, r.right(), r.bottom() - 1)
 
         p.setPen(QColor(60, 60, 60))
@@ -62,12 +59,13 @@ class RulerItem(QGraphicsItem):
 
 
 # --------------------------
-#  Clip vidéo redimensionnable
+#  Clip vidéo redimensionnable & cliquable
 # --------------------------
 
 class ClipItem(QObject, QGraphicsRectItem):
     """Bloc clip redimensionnable horizontalement (type CapCut)."""
     resized = Signal(float, float, float)  # (start_s, in_s, duration)
+    clicked = Signal()                     # clic sur le clip (peu importe la zone)
     moved = Signal(float)
 
     def __init__(self, model: Dict, px_per_sec: int, scene_width: float, lane_y: float):
@@ -95,9 +93,11 @@ class ClipItem(QObject, QGraphicsRectItem):
         self.setPos(QPointF(x, self._lane_y))
 
         # style
+        self._base_pen = QPen(QColor(40, 40, 40), 1)
+        self._sel_pen  = QPen(QColor(0, 120, 215), 2)
         color = QColor(model.get("color", "#7fb3ff"))
         self.setBrush(QBrush(color))
-        self.setPen(QPen(QColor(40, 40, 40), 1))
+        self.setPen(self._base_pen)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
 
@@ -116,6 +116,10 @@ class ClipItem(QObject, QGraphicsRectItem):
         self.handle_left.setPos(0, 0)
         self.handle_right.setPos(r.width() - 6, 0)
 
+    # --- sélection visuelle ---
+    def set_selected(self, on: bool):
+        self.setPen(self._sel_pen if on else self._base_pen)
+
     # --- hover pour curseur ---
     def hoverMoveEvent(self, event):
         if self.handle_left.isUnderMouse() or self.handle_right.isUnderMouse():
@@ -126,6 +130,7 @@ class ClipItem(QObject, QGraphicsRectItem):
 
     # --- gestion souris ---
     def mousePressEvent(self, event):
+        # déterminer si on saisit une poignée
         if self.handle_left.isUnderMouse():
             self._dragging_handle = "left"
         elif self.handle_right.isUnderMouse():
@@ -136,9 +141,12 @@ class ClipItem(QObject, QGraphicsRectItem):
         self._drag_start_x = event.scenePos().x()
         self._orig_rect = QRectF(self.rect())
         self._orig_x = float(self.x())
-        # snapshot des valeurs de modèle pour éviter l'accumulation
+        # snapshot des valeurs du modèle
         self._orig_in_s = float(self.model.get("in_s", 0.0))
         self._orig_start = float(self.model.get("start", 0.0))
+
+        # émettre un clic pour sélection (même si on attrape une poignée)
+        self.clicked.emit()
 
         super().mousePressEvent(event)
 
@@ -183,7 +191,11 @@ class ClipItem(QObject, QGraphicsRectItem):
             self.model["duration"] = max(0.1, new_w / self._px)
 
         self._update_handles()
-        self.resized.emit(self.model.get("start", 0.0), self.model.get("in_s", 0.0), self.model.get("duration", 0.0))
+        self.resized.emit(
+            self.model.get("start", 0.0),
+            self.model.get("in_s", 0.0),
+            self.model.get("duration", 0.0),
+        )
 
     def mouseReleaseEvent(self, event):
         self._dragging_handle = None
@@ -211,6 +223,8 @@ class TimelineView(QGraphicsView):
     clipDropRequested = Signal(str, float)  # path, start_s (vidéo)
     imageDropRequested = Signal(str, float) # path, start_s (images)
     clipResized = Signal(int, float, float, float)  # idx, start_s, in_s, duration (vidéo)
+    segmentSelected = Signal(int, float, float)     # idx, start_s, duration
+    segmentCleared = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -231,10 +245,13 @@ class TimelineView(QGraphicsView):
         self._models_texts: List[Dict] = []
 
         # items graphiques
-        self._items_video = []
+        self._items_video: List[ClipItem] = []
         self._items_images = []
         self._items_texts = []
         self._label_items = []
+
+        # sélection courante (index dans _items_video)
+        self._selected_index: int | None = None
 
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -243,29 +260,22 @@ class TimelineView(QGraphicsView):
         self._ruler = RulerItem(self._px_per_sec, self._scene_width())
         self._scene.addItem(self._ruler)
 
-        self._lane_bg = QGraphicsRectItem(0, 32, self._scene_width(), self._height - 40)
-        self._lane_bg.setBrush(QBrush(QColor(250, 250, 250)))
-        self._lane_bg.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
-        self._lane_bg.setZValue(-5)
-        self._scene.addItem(self._lane_bg)
+        # fonds de pistes
+        self._lane_bg_video  = QGraphicsRectItem(0, 32,              self._scene_width(), 40)
+        self._lane_bg_images = QGraphicsRectItem(0, 32 + 44,         self._scene_width(), 40)
+        self._lane_bg_texts  = QGraphicsRectItem(0, 32 + 44 * 2,     self._scene_width(), 40)
+        for bg in (self._lane_bg_video, self._lane_bg_images, self._lane_bg_texts):
+            bg.setBrush(QBrush(QColor(250, 250, 250)))
+            bg.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
+            bg.setZValue(-5)
+            self._scene.addItem(bg)
 
+        # playhead
         self._playhead = QGraphicsLineItem()
         self._playhead.setPen(QPen(QColor("red"), 2))
         self._playhead.setZValue(100)
         self._scene.addItem(self._playhead)
         self._update_playhead_x(0)
-
-        self._lane_bgs = []
-        for lane_def in self.LANE_DEFINITIONS:
-            y = lane_def["y"]
-            
-            # Le rectangle de fond pour la piste
-            bg_rect = QGraphicsRectItem(0, y, self._scene_width(), self.LANE_HEIGHT)
-            bg_rect.setBrush(QBrush(lane_def["color"]))
-            bg_rect.setPen(QPen(QColor(220, 220, 220), 1, Qt.DashLine))
-            bg_rect.setZValue(-5)
-            self._scene.addItem(bg_rect)
-            self._lane_bgs.append(bg_rect)
 
     # ---- helpers géométrie ----
     def _scene_width(self) -> float:
@@ -273,21 +283,19 @@ class TimelineView(QGraphicsView):
         return max(1200.0, secs * self._px_per_sec)
 
     def _rebuild_scene_rect(self):
-        # ✅ On calcule la hauteur totale en fonction des pistes
-        total_height = 180.0 # Hauteur par défaut
-        if self.LANE_DEFINITIONS:
-            last_lane = self.LANE_DEFINITIONS[-1]
-            total_height = last_lane["y"] + self.LANE_HEIGHT + 20.0 # y + hauteur + marge
-            
-        self._scene.setSceneRect(QRectF(0, 0, self._scene_width(), total_height))
-        self.setMinimumHeight(int(total_height) + 40) # +40 pour la règle et la scrollbar
+        self._scene.setSceneRect(QRectF(0, 0, self._scene_width(), self._height))
+        self.setMinimumHeight(int(self._height) + 40)  # +40: règle + scrollbar
 
+    # ---- API publique ----
     def set_total_duration(self, total_ms: int):
         self._total_ms = max(0, int(total_ms))
         self._rebuild_scene_rect()
         self._ruler.set_width(self._scene_width())
-        self._lane_bg.setRect(0, 32, self._scene_width(), self._height - 40)
-        for it in self._items:
+        # Ajuste la largeur des 3 pistes
+        self._lane_bg_video.setRect(0, 32, self._scene_width(), 40)
+        self._lane_bg_images.setRect(0, 32 + 44, self._scene_width(), 40)
+        self._lane_bg_texts.setRect(0, 32 + 44 * 2, self._scene_width(), 40)
+        for it in self._items_video:
             it.update_metrics(self._px_per_sec, self._scene_width())
 
     def set_zoom(self, px_per_sec: int):
@@ -306,57 +314,134 @@ class TimelineView(QGraphicsView):
         x = (ms / 1000.0) * self._px_per_sec
         self._playhead.setLine(x, 0, x, self.sceneRect().height())
 
-    def set_clips(self, items: List[Dict]):
-        """items: [{start:sec, duration:sec, label:str, color:"#RRGGBB"}, ...]"""
-        for it in self._items:
-            self._scene.removeItem(it)
-        self._items.clear()
-        self._models = list(items)
+    # ---- Sélection interne ----
+    def _clear_selection(self):
+        if self._selected_index is not None and 0 <= self._selected_index < len(self._items_video):
+            self._items_video[self._selected_index].set_selected(False)
+        self._selected_index = None
+        self.segmentCleared.emit()
 
-        lane_y = 50.0
-        for idx, vm in enumerate(self._models):
-            it = ClipItem(vm, self._px_per_sec, self._scene_width(), lane_y)
+    def _select_index(self, index: int):
+        if not (0 <= index < len(self._items_video)):
+            self._clear_selection()
+            return
+        # efface l'ancienne sélection
+        if self._selected_index is not None and self._selected_index != index:
+            self._items_video[self._selected_index].set_selected(False)
+
+        self._selected_index = index
+        item = self._items_video[index]
+        item.set_selected(True)
+
+        start_s = float(item.model.get("start", 0.0))
+        duration_s = float(item.model.get("duration", 0.0))
+        self.segmentSelected.emit(index, start_s, duration_s)
+
+    # ---- API 3 pistes ----
+    def set_tracks(self, video_items: List[Dict], image_items: List[Dict], text_items: List[Dict]):
+        # purge anciens items
+        for lst in (self._items_video, self._items_images, self._items_texts, self._label_items):
+            for it in lst:
+                self._scene.removeItem(it)
+            lst.clear()
+        self._clear_selection()
+
+        self._models_video = list(video_items or [])
+        self._models_images = list(image_items or [])
+        self._models_texts = list(text_items or [])
+
+        # Y de base pour chaque piste
+        y_video = 50.0
+        y_images = 50.0 + 44.0
+        y_texts = 50.0 + 44.0 * 2
+
+        # --- Piste VIDÉO (items redimensionnables & cliquables) ---
+        for idx, vm in enumerate(self._models_video):
+            vm = dict(vm)
+            vm.setdefault("color", "#7fb3ff")
+            it = ClipItem(vm, self._px_per_sec, self._scene_width(), y_video)
             self._scene.addItem(it)
-            lane_y += 42.0
 
+            # label
             label = vm.get("label", "")
             if label:
-                text_item = self._scene.addText(label)
-                text_item.setDefaultTextColor(QColor(20, 20, 20))
-                text_item.setPos(it.pos().x() + 6, it.pos().y() + 8)
-                text_item.setZValue(20)
-
-                # ✅ Correction ici : ignorer les floats du signal resized
-                def _sync_label(*_, t_item=text_item, item_ref=it):
+                t = self._scene.addText(label)
+                t.setDefaultTextColor(QColor(20, 20, 20))
+                t.setPos(it.pos().x() + 6, it.pos().y() + 8)
+                t.setZValue(20)
+                self._label_items.append(t)
+                def _sync_label(*_, t_item=t, item_ref=it):
                     if hasattr(t_item, "setPos"):
                         t_item.setPos(item_ref.pos().x() + 6, item_ref.pos().y() + 8)
                 it.resized.connect(_sync_label)
 
-            it.moved.connect(lambda new_s, index=idx: self.clipMoved.emit(index, new_s))
-            self._items.append(it)
+            # resize -> remonter vers MainWindow
+            def _forward_resize(*_, index=idx, item=it):
+                self.clipResized.emit(
+                    index,
+                    float(item.model.get("start", 0.0)),
+                    float(item.model.get("in_s", 0.0)),
+                    float(item.model.get("duration", 0.0)),
+                )
+            it.resized.connect(_forward_resize)
 
-        total_s = global_start_s
-        
-        # ... MAIS un overlay peut être plus long, vérifions
-        for img_model in project.image_overlays:
-            total_s = max(total_s, img_model.end)
-        for txt_model in project.text_overlays:
-            total_s = max(total_s, txt_model.end)
+            # clic -> sélection
+            it.clicked.connect(lambda idx=idx: self._select_index(idx))
 
-        # On ajoute une marge de 10s à la fin pour avoir de l'espace
-        total_s += 10.0
-        
-        print(f"[DEBUG] Nouvelle durée totale calculée: {total_s}s")
-        # On notifie la timeline de sa nouvelle durée
-        self.set_total_duration(int(total_s * 1000))
+            self._items_video.append(it)
+
+        # --- Piste IMAGES ---
+        for vm in self._models_images:
+            vm = dict(vm)
+            vm.setdefault("color", "#9be7a5")
+            it = QGraphicsRectItem()
+            w = max(2.0, float(vm["duration"]) * self._px_per_sec)
+            x = float(vm["start"]) * self._px_per_sec
+            it.setRect(x, y_images, w, 36.0)
+            it.setBrush(QBrush(QColor(vm["color"])))
+            it.setPen(QPen(QColor(40, 40, 40), 1))
+            self._scene.addItem(it)
+            self._items_images.append(it)
+
+            label = vm.get("label", "")
+            if label:
+                t = self._scene.addText(label)
+                t.setDefaultTextColor(QColor(20, 20, 20))
+                t.setPos(x + 6, y_images + 8)
+                t.setZValue(20)
+                self._label_items.append(t)
+
+        # --- Piste TEXTES ---
+        for vm in self._models_texts:
+            vm = dict(vm)
+            vm.setdefault("color", "#d4b5ff")
+            it = QGraphicsRectItem()
+            w = max(2.0, float(vm["duration"]) * self._px_per_sec)
+            x = float(vm["start"]) * self._px_per_sec
+            it.setRect(x, y_texts, w, 36.0)
+            it.setBrush(QBrush(QColor(vm["color"])))
+            it.setPen(QPen(QColor(40, 40, 40), 1))
+            self._scene.addItem(it)
+            self._items_texts.append(it)
+
+            label = vm.get("label", "")
+            if label:
+                t = self._scene.addText(label)
+                t.setDefaultTextColor(QColor(20, 20, 20))
+                t.setPos(x + 6, y_texts + 8)
+                t.setZValue(20)
+                self._label_items.append(t)
 
     # ---- interactions ----
     def mousePressEvent(self, e):
         pos_scene = self.mapToScene(e.pos())
-        if not self.itemAt(e.pos()):
+        item = self.itemAt(e.pos())
+        # clic à vide => déplacer tête de lecture + désélection
+        if item is None:
             ms = int(max(0.0, pos_scene.x() / self._px_per_sec) * 1000.0)
             self.seekRequested.emit(ms)
             self._update_playhead_x(ms)
+            self._clear_selection()
         super().mousePressEvent(e)
 
     # ---- DnD ----

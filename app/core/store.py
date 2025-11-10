@@ -216,3 +216,115 @@ class Store(QObject):
 
         # par sécurité (t > total): pointer fin du dernier clip
         return len(clips) - 1, clips[-1], self._clip_duration_s(clips[-1])
+    
+    # --- Helpers durée effective d’un clip (in/out vs duration_s) ---
+    def _clip_effective_duration_s(self, clip) -> float:
+        try:
+            # si un champ duration_s est présent/non nul, on le prend
+            d = getattr(clip, "duration_s", None)
+            if d is not None and float(d) > 0.0:
+                return float(d)
+            # sinon on retombe sur out - in
+            return max(0.0, float(getattr(clip, "out_s", 0.0)) - float(getattr(clip, "in_s", 0.0)))
+        except Exception:
+            return 0.0
+
+
+    # --- Trouver le clip couvrant un temps global (en s) ---
+    def clip_at_global_time(self, t_s: float):
+        """
+        Retourne (index, clip, local_s) pour le temps global t_s (secondes).
+        Si aucun clip ne couvre t_s, retourne (-1, None, 0.0)
+        """
+        t = float(max(0.0, t_s))
+        acc = 0.0
+        clips = self.project().clips
+        for i, c in enumerate(clips):
+            dur = self._clip_effective_duration_s(c)
+            if acc <= t < acc + dur or (i == len(clips) - 1 and abs(t - (acc + dur)) < 1e-9):
+                return i, c, max(0.0, t - acc)
+            acc += dur
+        return -1, None, 0.0
+
+
+    # --- Split minimal d’un clip au temps local (en s) ---
+    def split_clip_at(self, idx: int, local_s: float) -> bool:
+        """
+        Coupe le clip d'index idx en deux à local_s (secondes, dans le clip).
+        Retourne True si un split a été effectué.
+        """
+        clips = self.project().clips
+        if not (0 <= idx < len(clips)):
+            return False
+
+        c = clips[idx]
+        dur = self._clip_effective_duration_s(c)
+        local_s = float(max(0.0, min(local_s, dur)))
+
+        # pas de split si bord
+        if local_s <= 0.0 or local_s >= dur:
+            return False
+
+        # créer un clone 'droite'
+        from copy import deepcopy
+        right = deepcopy(c)
+
+        # Ajuste le gauche
+        c.duration_s = local_s
+        c.out_s = float(getattr(c, "in_s", 0.0)) + c.duration_s
+
+        # Ajuste le droit
+        right.in_s = float(c.out_s)
+        right.duration_s = max(0.0, dur - local_s)
+        right.out_s = float(right.in_s) + right.duration_s
+
+        clips.insert(idx + 1, right)
+
+        if hasattr(self, "clipsChanged"): self.clipsChanged.emit()
+        if hasattr(self, "changed"): self.changed.emit()
+        return True
+
+
+    # --- Suppression d’un segment global [start_s, end_s) avec "refermer" ---
+    def delete_segment(self, start_s: float, end_s: float, close_gap: bool = True):
+        """
+        Supprime la portion [start_s, end_s) sur la séquence vidéo.
+        close_gap=True => on **referme** (modèle séquentiel).
+        """
+        a = float(min(start_s, end_s))
+        b = float(max(start_s, end_s))
+        if b - a <= 0.0:
+            return
+
+        proj = self.project()
+        clips = proj.clips
+
+        # 1) split à 'a'
+        idx_a, clip_a, local_a = self.clip_at_global_time(a)
+        if clip_a is not None:
+            self.split_clip_at(idx_a, local_a)
+
+        # Recalcul pour 'b' après le split précédent
+        idx_b, clip_b, local_b = self.clip_at_global_time(b)
+        if clip_b is not None:
+            self.split_clip_at(idx_b, local_b)
+
+        # 2) supprimer tous les clips entièrement dans [a, b)
+        #    (on re-parcourt car l’array a changé avec les splits)
+        acc = 0.0
+        to_delete = []
+        for i, c in enumerate(clips):
+            dur = self._clip_effective_duration_s(c)
+            s0, s1 = acc, acc + dur
+            if s0 >= a and s1 <= b:
+                to_delete.append(i)
+            acc = s1
+
+        for i in reversed(to_delete):
+            del clips[i]
+
+        # close_gap=False (laisser un trou) non géré dans ce modèle séquentiel.
+        # On ignore le paramètre pour rester simple, comme convenu.
+
+        if hasattr(self, "clipsChanged"): self.clipsChanged.emit()
+        if hasattr(self, "changed"): self.changed.emit()
