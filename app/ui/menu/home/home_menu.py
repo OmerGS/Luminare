@@ -1,5 +1,6 @@
 # app/ui/menu/home/home_menu.py
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedLayout
+from PySide6.QtCore import Qt
 from app.ui import styles
 from app.ui.components.title import Title
 from app.ui.components.menu_button import MenuButton
@@ -23,11 +24,11 @@ class MainMenu(QWidget):
         
         layoutWidgetButton = QVBoxLayout()
 
-        layoutWidgetButton.addWidget(MenuButton("Home", self.show_project))
-        layoutWidgetButton.addWidget(MenuButton("Settings", self.show_settings))
+        layoutWidgetButton.addWidget(MenuButton("Home", self.show_project), alignment=Qt.AlignmentFlag.AlignVCenter)
+        layoutWidgetButton.addWidget(MenuButton("Settings", self.show_settings), alignment=Qt.AlignmentFlag.AlignTop)
 
-        layoutMenu.addLayout(layoutWidgetButton)
-        layoutMenu.addWidget(LeaveButton("Leave", self.close_app))
+        layoutMenu.addLayout(layoutWidgetButton, )
+        layoutMenu.addWidget(LeaveButton("Leave", self.close_app), alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.layoutOther = QStackedLayout(self)
         self.project_select = ProjectSelect(go_to_editor, vids)
