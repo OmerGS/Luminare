@@ -13,12 +13,11 @@ class SettingsMenu(QWidget):
 
         settingsLayout = QVBoxLayout(self)
 
-        volumeLayout = QHBoxLayout()
+        volumeLayout = QVBoxLayout()
 
         pathLayout = QVBoxLayout()
 
         volumeLabel = QLabel("Volume")
-        volumeLabel.setStyleSheet("padding-top : 50px")
 
         self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=100)
 
@@ -33,11 +32,11 @@ class SettingsMenu(QWidget):
         volumeLayout.addWidget(self.volume_slider, stretch=1)
 
         pathLayout.addWidget(exportLabel)
-        pathLayout.addWidget(self.change_export)
+        pathLayout.addWidget(self.change_export,)
         pathLayout.addWidget(saveLabel)
         pathLayout.addWidget(self.change_save)
 
-        settingsLayout.addLayout(pathLayout)
-        settingsLayout.addLayout(volumeLayout)
+        settingsLayout.addLayout(pathLayout, stretch=1)
+        settingsLayout.addLayout(volumeLayout, stretch=1)
 
         settingsLayout.addStretch()

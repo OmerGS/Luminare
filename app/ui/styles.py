@@ -28,6 +28,10 @@ PROJECT_BUTTON_STYLE="""
         border-radius: 12px;
         padding: 20px 20px;
         font-size: 18px;
+        max-width: 100%;
+        max-height: 100%;
+        height: 100%;
+        width: 100%;
     }
     QPushButton:hover {
         background-color: #1f1f1f;
@@ -62,16 +66,15 @@ CREATE_PROJECT_BUTTON_STYLE="""
         font-size: 30px;
     }
     QPushButton:hover {
-
+        background: #2ed1d2;
     }
     QPushButton:pressed {
-    
+        background: #1ae5e6;
     }
 """
 
 VOLUME_SLIDER="""
     QSlider{
-        padding-top: 50px;
     }
     QSlider::groove:horizontal{
         border: 1px solid #999999;
@@ -83,18 +86,19 @@ VOLUME_SLIDER="""
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #b4b4b4, stop:1 #8f8f8f);
         border: 1px solid #5c5c5c;
         width: 20px;
-        margin: -2px 0; /* handle is placed by default on the contents rect of the groove. Expand outside the groove */
+        margin: -2px 0; 
         border-radius: 3px;
     }
 """
 
 CHANGE_FOLDER_BUTTON="""
-        QPushButton {
+    QPushButton {
         background-color: #a0a0a0;
         color : black;
         border-radius: 12px;
         padding : 12px 24px;
         font-size: 16px;
+        max-width: 200%;    
     }
     QPushButton:hover {
         background-color : #808080;
@@ -113,15 +117,15 @@ THEME_BUTTON="""
 
 # Modifié pour un fond sombre
 WINDOW_STYLE = """
-    /* Style pour le widget racine (la fenêtre) */
     QWidget {
         background-color: #1f1f1f;
     }
     
-    /* Style global pour tous les QLabels */
     QLabel {
         background-color: #1f1f1f;
-        color: white; /* Texte blanc pour être lisible */
+        color: white; 
+        max-height: 50%;
+        padding-top: 25px;
     }
 """
 

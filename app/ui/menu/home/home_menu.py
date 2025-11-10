@@ -19,8 +19,14 @@ class MainMenu(QWidget):
         mainLayout = QHBoxLayout(self)
 
         layoutMenu = QVBoxLayout()
-        layoutMenu.addWidget(MenuButton("Home", self.show_project))
-        layoutMenu.addWidget(MenuButton("Settings", self.show_settings))
+        
+        
+        layoutWidgetButton = QVBoxLayout()
+
+        layoutWidgetButton.addWidget(MenuButton("Home", self.show_project))
+        layoutWidgetButton.addWidget(MenuButton("Settings", self.show_settings))
+
+        layoutMenu.addLayout(layoutWidgetButton)
         layoutMenu.addWidget(LeaveButton("Leave", self.close_app))
 
         self.layoutOther = QStackedLayout(self)
