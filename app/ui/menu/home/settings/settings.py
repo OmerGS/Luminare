@@ -20,6 +20,7 @@ class SettingsMenu(QWidget):
         volumeLabel = QLabel("Volume")
 
         self.volume_slider = VolumeSlider(orientation=Qt.Horizontal, interval=100)
+        self.volume_slider.setMinimumWidth(750)
 
         exportLabel = QLabel("export path")
 
@@ -29,7 +30,7 @@ class SettingsMenu(QWidget):
         self.change_save = ChangeSaveFolderButton(savePath, openFileSearch)
 
         volumeLayout.addWidget(volumeLabel)
-        volumeLayout.addWidget(self.volume_slider, stretch=1)
+        volumeLayout.addWidget(self.volume_slider,stretch=10, alignment=Qt.AlignmentFlag.AlignLeft)
 
         pathLayout.addWidget(exportLabel)
         pathLayout.addWidget(self.change_export,)

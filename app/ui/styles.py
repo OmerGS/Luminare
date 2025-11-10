@@ -28,8 +28,6 @@ PROJECT_BUTTON_STYLE="""
         border-radius: 12px;
         padding: 20px 20px;
         font-size: 18px;
-        max-width: 100%;
-        max-height: 100%;
         height: 100%;
         width: 100%;
     }

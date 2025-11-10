@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QVBoxLayout, QGridLayout, QWidget
+from PySide6.QtCore import Qt
 from app.ui import styles
 from app.ui.components.create_project_button import CreateProjectButton
 from app.ui.components.project_button import ProjectButton
@@ -15,19 +16,18 @@ class ProjectSelect(QWidget):
         layoutCreate.setSpacing(30)
         layoutCreate.setContentsMargins(50, 50, 50, 50)
 
-                # Titre (utilisation du composant Title)
         layoutCreate.addWidget(Title("Luminare"))
 
-        # Boutons (utilisation du composant MenuButton)
-        layoutCreate.addWidget(CreateProjectButton("Éditeur", go_to_editor), stretch=7 )
+        layoutCreate.addWidget(CreateProjectButton("Éditeur", go_to_editor))
 
-        layoutCreate.addStretch()
-
-        layoutProject = QGridLayout(self)
+        layoutProject = QGridLayout()
+        layoutProject.setVerticalSpacing(15)
         cols = 5
         for i, text in enumerate(vids):
             row = i // cols
             col = i % cols
-            layoutProject.addWidget(ProjectButton(text, go_to_editor), row, col)
+            layoutProject.addWidget(ProjectButton(text, go_to_editor), row, col, alignment=Qt.AlignmentFlag.AlignTop)
 
         layoutCreate.addLayout(layoutProject)
+
+        layoutCreate.addStretch(1)
