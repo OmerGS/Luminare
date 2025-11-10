@@ -33,9 +33,6 @@ class EditorWindow(QWidget):
 
         self.controls = PlayerControls()
         self.controls.set_media(self.seq)
-        self._sel_in_s = None
-        self._sel_out_s = None
-
 
         self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
 
@@ -105,16 +102,12 @@ class EditorWindow(QWidget):
         if hasattr(self.controls, "splitRequested"):
             self.controls.splitRequested.connect(self.split_current_clip)
 
-        # --- Bouton Supprimer ---
+        # --- Sélection de segment (clic sur timeline) + suppression ---
         self._selected_segment = None  # tuple (index, start_s, duration_s) ou None
-
         self.timeline_view.segmentSelected.connect(self._on_segment_selected)
         self.timeline_view.segmentCleared.connect(self._on_segment_cleared)
-
-        # Bouton "Suppr (refermer)" -> supprime le segment sélectionné
         if hasattr(self.controls, "deleteSelectionCloseRequested"):
             self.controls.deleteSelectionCloseRequested.connect(self._delete_selected_segment)
-
 
         # --- Inspector ↔ Store ---
         self.inspector.filtersChanged.connect(self._on_filters_changed)
@@ -123,11 +116,12 @@ class EditorWindow(QWidget):
         self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
 
         # --- Store → UI ---
-        self.store.overlayChanged.connect(self._refresh_all_timeline_items)
-        self.store.clipsChanged.connect(self._refresh_all_timeline_items)
+        # IMPORTANT : un seul point d'entrée pour refresh ET reset de la sélection.
+        self.store.overlayChanged.connect(self._on_store_clips_changed)
+        self.store.clipsChanged.connect(self._on_store_clips_changed)
 
         # --- Initialisation ---
-        self._refresh_all_timeline_items()
+        self._on_store_clips_changed()
 
         # resize d’un clip vidéo (timeline → store)
         self.timeline_view.clipResized.connect(self._on_clip_resized)
@@ -165,7 +159,7 @@ class EditorWindow(QWidget):
         proj = self.store.project()
         self.canvas.set_project(proj)
 
-        video_items = clips_to_timeline_items(proj.clips)  # [{start,duration,label,color}, ...]
+        video_items = clips_to_timeline_items(proj.clips)
         image_items = [
             {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
             for o in proj.image_overlays
@@ -182,51 +176,15 @@ class EditorWindow(QWidget):
             self.timeline_view.set_total_duration(total_ms)
 
     def _refresh_all_timeline_items(self):
-        """
-        Reconstruit la timeline unique (3 pistes : Vidéo / Images / Textes)
-        à partir de l'état actuel du Store, puis met à jour la durée totale.
-        """
-        from pathlib import Path as _P
-        proj = self.store.project()
+        """(Garde pour compat) : redirige vers _refresh_overlay."""
+        self._refresh_overlay()
 
-        # PISTE VIDÉO : transforme les clips du projet en items pour la timeline
-        video_items = clips_to_timeline_items(proj.clips)  # [{start,duration,label,color}, ...]
-
-        # PISTE IMAGES
-        image_items = [
-            {
-                "start": o.start,
-                "duration": max(0.1, (o.end - o.start)),
-                "label": f"img:{_P(o.path).stem}",
-                "color": "#9be7a5",
-            }
-            for o in proj.image_overlays
-        ]
-
-        # PISTE TEXTES
-        text_items = [
-            {
-                "start": ov.start,
-                "duration": max(0.1, (ov.end - ov.start)),
-                "label": (ov.text or "Titre"),
-                "color": "#d4b5ff",
-            }
-            for ov in proj.text_overlays
-        ]
-
-        # Pousse dans la vue (timeline unique)
-        self.timeline_view.set_tracks(video_items, image_items, text_items)
-
-        # Met à jour la durée totale de séquence pour le ruler / zoom / scroll
-        total_ms = total_sequence_duration_ms(proj.clips)
-        if total_ms > 0:
-            self.timeline_view.set_total_duration(total_ms)
-
+    def _on_store_clips_changed(self):
+        """Unifie refresh & remise à zéro de la sélection après toute modif Store."""
+        self._selected_segment = None
+        self._refresh_overlay()
 
     # ---------- Clips / Timeline ----------
-    def _on_clips_changed(self):
-        self._refresh_overlay()  # on a désormais une seule API pour alimenter les 3 pistes
-
     def _probe_duration_and_add(self, path: str, place_s: float):
         """
         Sonde la durée réelle du fichier (via MediaController) et ajoute le clip à la bonne place.
@@ -253,7 +211,7 @@ class EditorWindow(QWidget):
                 self.store.add_video_clip_at(path, place_s, duration_s=dur_s)
             else:
                 self.store.add_video_clip(path, in_s=0.0, out_s=dur_s, duration=dur_s)
-            self._on_clips_changed()
+            # la connexion clipsChanged déclenchera _on_store_clips_changed
 
         tmp.errorOccurred.connect(_on_err)
         tmp.durationChanged.connect(_on_dur)
@@ -276,6 +234,7 @@ class EditorWindow(QWidget):
         self.store.add_image_overlay(path, start_s, duration=3.0)
         self.canvas.set_project(self.store.project())
         self.seq.seek_ms(int(start_s * 1000))
+        # overlayChanged -> _on_store_clips_changed rafraîchira
 
     # ---------- Timeline resize → Store (vidéo) ----------
     def _on_clip_resized(self, idx: int, start_s: float, in_s: float, duration_s: float):
@@ -288,26 +247,46 @@ class EditorWindow(QWidget):
                 c.out_s = c.in_s + c.duration_s
             except Exception:
                 pass
+            # Informe le Store (qui déclenchera le refresh unifié)
             if hasattr(self.store, "clipsChanged"):
                 self.store.clipsChanged.emit()
             if hasattr(self.store, "changed"):
                 self.store.changed.emit()
-            self._refresh_overlay()
 
-    # ---------- Action "✂ Couper au playhead" ----------
+    # ---------- Action "✂ Couper" ----------
     def split_current_clip(self):
-        ms = self.seq.position_ms()
-        clips = self.store.project().clips
-        acc = 0.0
-        for i, c in enumerate(clips):
-            dur = float(getattr(c, "duration_s", 0.0) or (getattr(c, "out_s", 0.0) - getattr(c, "in_s", 0.0)))
-            if acc <= ms/1000.0 <= acc + dur:
-                local = ms/1000.0 - acc
-                self.store.split_clip_at(i, local)
-                self._refresh_overlay()
-                return
-            acc += dur
+        """
+        Coupe exactement à la dernière position cliquée dans la timeline,
+        sinon au niveau du playhead si aucun clic n'a été mémorisé.
+        """
+        # Immobilise le playhead pendant l'opération
+        if hasattr(self.seq, "pause"):
+            self.seq.pause()
 
+        # Récupère la dernière position cliquée (timeline) sinon le playhead
+        t_click = None
+        if hasattr(self.timeline_view, "last_clicked_seconds"):
+            t_click = self.timeline_view.last_clicked_seconds()
+        t_s = float(t_click) if t_click is not None else (self.seq.position_ms() / 1000.0)
+
+        idx, clip, local = self.store.clip_at_global_time(t_s)
+        if idx >= 0 and clip is not None:
+            if not self.store.split_clip_at(idx, local):
+                # Si exactement sur une frontière, pousse d’un epsilon
+                eps = 1e-6
+                idx, clip, local = self.store.clip_at_global_time(t_s + eps)
+                self.store.split_clip_at(idx, local)
+
+            # Nettoie la dernière position de clic pour éviter tout "fantôme"
+            if hasattr(self.timeline_view, "clear_last_click"):
+                self.timeline_view.clear_last_click()
+            return
+
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Couper", "Aucun clip vidéo à cet instant.")
+
+
+    # ---------- Sélection depuis la timeline ----------
     def _on_segment_selected(self, idx: int, start_s: float, duration_s: float):
         self._selected_segment = (int(idx), float(start_s), float(duration_s))
 
@@ -316,7 +295,6 @@ class EditorWindow(QWidget):
 
     def _delete_selected_segment(self):
         if not self._selected_segment:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Suppression", "Clique d'abord un segment vidéo dans la timeline.")
             return
 
@@ -325,15 +303,9 @@ class EditorWindow(QWidget):
         b = float(start_s + duration_s)
 
         try:
-            # refermer le trou
+            # refermer le trou (le Store émettra clipsChanged → refresh + reset sélection)
             self.store.delete_segment(a, b, close_gap=True)
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Suppression", f"Erreur: {e}")
             return
 
-        # reset sélection UI & refresh
-        self._selected_segment = None
-        # la timeline se rafraîchit comme d'habitude via clipsChanged -> _refresh_overlay/_on_clips_changed
-        if hasattr(self.store, "clipsChanged"):
-            self.store.clipsChanged.emit()

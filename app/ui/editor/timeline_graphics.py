@@ -253,6 +253,9 @@ class TimelineView(QGraphicsView):
         # sélection courante (index dans _items_video)
         self._selected_index: int | None = None
 
+        # mémorisation du dernier clic (en secondes)
+        self._last_click_s: float | None = None
+
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
@@ -336,6 +339,13 @@ class TimelineView(QGraphicsView):
         start_s = float(item.model.get("start", 0.0))
         duration_s = float(item.model.get("duration", 0.0))
         self.segmentSelected.emit(index, start_s, duration_s)
+
+    # ---- API clic mémorisé ----
+    def last_clicked_seconds(self) -> float | None:
+        return self._last_click_s
+
+    def clear_last_click(self):
+        self._last_click_s = None
 
     # ---- API 3 pistes ----
     def set_tracks(self, video_items: List[Dict], image_items: List[Dict], text_items: List[Dict]):
@@ -434,15 +444,34 @@ class TimelineView(QGraphicsView):
 
     # ---- interactions ----
     def mousePressEvent(self, e):
+
+        # Place le playhead exactement au clic et mémorise l’instant en secondes
         pos_scene = self.mapToScene(e.pos())
+        s = max(0.0, pos_scene.x() / float(self._px_per_sec))
+        self._last_click_s = s
+
+        ms = int(s * 1000.0)
+        self.seekRequested.emit(ms)
+        self._update_playhead_x(ms)
+
+        # Si on clique dans le fond (pas sur un ClipItem), on efface la sélection
         item = self.itemAt(e.pos())
-        # clic à vide => déplacer tête de lecture + désélection
-        if item is None:
-            ms = int(max(0.0, pos_scene.x() / self._px_per_sec) * 1000.0)
-            self.seekRequested.emit(ms)
-            self._update_playhead_x(ms)
+        # remonte aux parents éventuels (poignées, etc.)
+        parent = item
+        is_clip = False
+        while parent is not None:
+            from types import SimpleNamespace  # évite import en tête si besoin
+            if isinstance(parent, ClipItem):
+                is_clip = True
+                break
+            parent = parent.parentItem()
+
+        if not is_clip:
             self._clear_selection()
+
+        # Puis laisser la scène gérer les événements (clic sur clip, drag, etc.)
         super().mousePressEvent(e)
+
 
     # ---- DnD ----
     def _scene_pos_to_seconds(self, ev) -> float:
