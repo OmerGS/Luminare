@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional
 from PySide6.QtCore import QObject, Signal, QUrl
 
 from core.store import Store
-from core.project import VideoClip, Project
+from core.project import Clip, Project
 from core.utils_timeline import total_sequence_duration_ms
 
 class SequencePlayer(QObject):
@@ -18,7 +18,7 @@ class SequencePlayer(QObject):
         super().__init__(parent)
         self._media = media_controller   # core.media_controller.MediaController
         self._store = store
-        self._clips: List[VideoClip] = []
+        self._clips: List[Clip] = []
         self._boundaries_ms: List[Tuple[int, int]] = []  # [(start_ms, end_ms) global pour chaque clip]
         self._total_ms = 0
         self._current_clip_index: int = -1

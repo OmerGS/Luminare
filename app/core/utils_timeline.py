@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from dataclasses import is_dataclass
 
-# On tolère l'ancien Clip (avec .trim) et le nouveau VideoClip
 def _clip_bounds_seconds(c: Any) -> tuple[float, float]:
     # Nouveau modèle
     if hasattr(c, "in_s") and hasattr(c, "out_s"):
@@ -15,15 +14,6 @@ def _clip_bounds_seconds(c: Any) -> tuple[float, float]:
         else:
             end = out_s
         return max(0.0, start), max(start, end)
-
-    # Ancien modèle (Clip avec .trim = (in,out))
-    if hasattr(c, "trim"):
-        try:
-            start = float(c.trim[0])
-            end   = float(c.trim[1])
-            return max(0.0, start), max(start, end)
-        except Exception:
-            pass
 
     # fallback
     return 0.0, 0.0

@@ -1,71 +1,88 @@
-# engine/exporter.py
 from pathlib import Path
+from core.save_system.save_api import ProjectAPI
 from core.project import Project
+from typing import Callable, Any, Dict
+from mvp_editor import main as render_project
 
 class Exporter:
     def __init__(self):
         try:
-            from mvp_editor import main as render_project
-            self._render = render_project
+            self._render: Callable[[Dict[str, Any]], None] = render_project 
         except Exception:
             self._render = None
 
+    def _create_export_dict(self, proj: Project, out_path: Path) -> dict:
+        """Crée le dictionnaire de configuration pour le moteur de rendu."""
+        
+        clips_export = [{"path": c.path, "in_s": c.in_s, "out_s": c.out_s, "duration_s": c.duration_s} for c in proj.clips]
+
+        return {
+            "clips": clips_export,
+            "resolution": proj.resolution,
+            "filters": vars(proj.filters),
+            "text_overlays": [vars(ov) for ov in proj.text_overlays], 
+            "output": str(out_path),
+            "fps": proj.fps,
+            "audio_normalize": proj.audio_normalize
+        }
+
+    def _export_project(self, proj: Project, out_path: Path) -> str:
+        """Méthode interne pour effectuer l'exportation et vérifier le moteur."""
+        if not self._render:
+            raise RuntimeError("mvp_editor introuvable.")
+            
+        project_dict = self._create_export_dict(proj, out_path)
+        
+        self._render(project_dict)
+        return str(out_path)
+
+    # --- Méthodes Publiques ---
+
     def export_quick(self, src_path: str, duration_ms: int) -> str:
+        """
+        Export rapide depuis un fichier source
+        """
         if not self._render:
             raise RuntimeError("mvp_editor introuvable.")
         out = Path("exports") / "output_gui.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
+
         seconds = max(1, int((duration_ms or 5000) / 1000))
         seconds = min(5, seconds)
-        project = {
-            "clips": [{"path": src_path, "trim": (0, seconds)}],
-            "resolution": (1920, 1080),
-            "filters": {"brightness": 0.05, "contrast": 1.10, "saturation": 1.10, "vignette": True},
-            "text_overlays": [{
-                "text": "Export GUI",
-                "x": "(w-text_w)/2", "y": "h*0.1",
-                "fontsize": 48, "fontcolor": "white",
-                "box": True, "boxcolor": "black@0.5", "boxborderw": 10,
-                "start": 0.5, "end": 4.5,
-                "fontfile": r"C:\Windows\Fonts\arial.ttf"
-            }],
-            "output": str(out),
-            "fps": 30,
-            "audio_normalize": True
-        }
-        self._render(project)
-        return str(out)
 
-    def export_from_project(self, proj: Project, fallback_src: str) -> str:
+        proj = Project(name="Export Quick", resolution=(1920,1080), fps=30)
+        proj.add_clip({"path": src_path, "in_s": 0, "out_s": seconds, "duration_s": seconds})
+
+        return self._export_project(proj, out)
+        
+    def export_from_file(self, filename: str, fallback_src: str = None) -> str:
+        """
+        Export depuis un fichier .lmprj existant
+        """
         if not self._render:
             raise RuntimeError("mvp_editor introuvable.")
+
+        try:
+            proj = ProjectAPI.load(filename)
+        except FileNotFoundError:
+            if fallback_src:
+                proj = Project(name="Export Fallback", resolution=(1920,1080), fps=30)
+                proj.add_clip({"path": fallback_src, "in_s": 0, "out_s": 5, "duration_s": 5})
+            else:
+                raise
+
         out = Path("exports") / "output_gui.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
+        return self._export_project(proj, out)
+        
+    def export_from_project(self, proj: Project, fallback_src: str) -> str:
+        """
+        Exportation directe d'un objet Project en mémoire.
+        """
+        out_path = Path(proj.output) if proj.clips else Path("exports") / "output_gui.mp4"
+        if not proj.clips and fallback_src:
+            out_path = Path(fallback_src) # Utilise le fallback si le projet est vide
+        
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        clips = []
-        if proj.clips:
-            for c in proj.clips:
-                clips.append({"path": c.path, "trim": (c.trim[0], c.trim[1])})
-        else:
-            clips = [{"path": fallback_src, "trim": (0, 5)}]
-
-        filters = {
-            "brightness": max(-1.0, min(1.0, proj.filters.brightness)),
-            "contrast":   max(0.0, min(3.0, proj.filters.contrast)),
-            "saturation": max(0.0, min(3.0, proj.filters.saturation)),
-            "vignette": bool(proj.filters.vignette),
-        }
-
-        text_overlays = [ov.__dict__ for ov in proj.text_overlays]
-
-        project_dict = {
-            "clips": clips,
-            "resolution": proj.resolution,
-            "filters": filters,
-            "text_overlays": text_overlays,
-            "output": str(out),
-            "fps": proj.fps,
-            "audio_normalize": True
-        }
-        self._render(project_dict)
-        return str(out)
+        return self._export_project(proj, out_path)

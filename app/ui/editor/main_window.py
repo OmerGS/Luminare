@@ -1,6 +1,6 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QSizePolicy, QSplitter
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QSizePolicy, QSplitter, QFileDialog, QInputDialog
 
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
@@ -10,26 +10,29 @@ from ui.editor.inspector import Inspector
 from core.media_controller import MediaController
 from core.sequence_player import SequencePlayer
 from core.store import Store
-from engine.exporter import Exporter
-from ui.components.assets_panel import AssetsPanel
 from core.utils_timeline import clips_to_timeline_items, total_sequence_duration_ms
 
 
+from core.export.export_service import ExportService
+from core.export.export_profile import DEFAULT_PROFILES
+from core.export.engine_interface import RenderError
+from ui.editor.assets_panel import AssetsPanel
+
 class EditorWindow(QWidget):
-    def __init__(self):
+    def __init__(self, store: Store, export_service: ExportService, parent=None):
         super().__init__()
-        self.setWindowTitle("Luminare — Lecteur & Timeline")
         self.resize(1280, 720)
 
-        # --- Backends ---
-        self.media = MediaController(self)        # player 1-fichier
-        self.store = Store(self)                  # modèle
-        self.seq = SequencePlayer(self.media, self.store, self)  # séquence multi-clips
-        self.exporter = Exporter()
+        
+        # back
+        self.store = store
+        self.exporter = export_service
 
-        # --- Widgets principaux ---
+        self.media = MediaController(self)        # player 1-fichier
+        self.seq = SequencePlayer(self.media, self.store, self) 
+
+        # centre vidéo (canvas)
         self.canvas = VideoCanvas()
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.controls = PlayerControls()
         self.controls.set_media(self.seq)
@@ -49,7 +52,7 @@ class EditorWindow(QWidget):
         center_col_layout.setContentsMargins(0, 0, 0, 0)
         center_col_layout.setSpacing(6)
         center_col_layout.addWidget(self.canvas, stretch=1)
-        center_col_layout.addLayout(self.controls)
+        center_col_layout.addWidget(self.controls)
 
         # --- Splitter horizontal principal (Assets | Canvas | Inspector) ---
         top_splitter = QSplitter(Qt.Horizontal, self)
@@ -125,16 +128,55 @@ class EditorWindow(QWidget):
 
         # resize d’un clip vidéo (timeline → store)
         self.timeline_view.clipResized.connect(self._on_clip_resized)
+        self.store.overlayChanged.connect(self._refresh_overlay)
+        self._refresh_overlay()
+
+    # ----- actions -----
+    def _open_file(self):
+        start_dir = str(Path.cwd() / "assets")
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Ouvrir une vidéo", start_dir,
+            "Vidéos (*.mp4 *.mov *.mkv *.avi);;Tous les fichiers (*.*)"
+        )
+        if not f: return
+        self.media.load(QUrl.fromLocalFile(f))
+        self.media.play()
+        # provisoire: clip unique avec une durée par défaut (ajustable après)
+        self.store.set_clip(f, duration_s=5.0)
 
     # ---------- Export ----------
     def _export(self):
         proj = self.store.project()
-        src = proj.clips[0].path if proj.clips else str(Path("assets") / "Fluid_Sim_Hue_Test.mp4")
+        
+        default_name = proj.name.strip() or "output"
+        default_path = str(Path.cwd() / "exports" / f"{default_name}.mp4")
+        
+        out_path_str, _ = QFileDialog.getSaveFileName(
+            self, "Exporter la vidéo", default_path, "Vidéos MP4 (*.mp4)"
+        )
+        
+        if not out_path_str:
+            return
+
+        out_path = Path(out_path_str)
+        
+        profile = DEFAULT_PROFILES["h264_medium"]
+        
+        fallback_src = proj.clips[0].path if proj.clips else (str(Path("assets") / "Fluid_Sim_Hue_Test.mp4"))
+
         try:
-            out_path = self.exporter.export_from_project(proj, fallback_src=src)
-            QMessageBox.information(self, "Export", f"Fichier exporté : {out_path}")
+            self.exporter.export_project(
+                proj=proj,
+                out_path=out_path,
+                profile=profile,
+                fallback_src=fallback_src
+            )
+            QMessageBox.information(self, "Exportation terminée", f"Fichier exporté avec succès : \n{out_path}")
+            
+        except RenderError as e:
+            QMessageBox.critical(self, "Échec de l'exportation", f"Une erreur de rendu est survenue:\n{e}")
         except Exception as e:
-            QMessageBox.critical(self, "Export échoué", str(e))
+            QMessageBox.critical(self, "Échec de l'exportation", f"Une erreur inattendue est survenue:\n{e}")
 
     def _on_media_error(self, text: str):
         if text:
@@ -159,6 +201,27 @@ class EditorWindow(QWidget):
         proj = self.store.project()
         self.canvas.set_project(proj)
 
+        video_items = clips_to_timeline_items(proj.clips)
+        image_items = [
+            {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
+            for o in proj.image_overlays
+        ]
+        text_items = [
+            {"start": ov.start, "duration": max(0.1, (ov.end - ov.start)), "label": (ov.text or "Titre"), "color": "#d4b5ff"}
+            for ov in proj.text_overlays
+        ]
+
+        self.timeline_view.set_tracks(video_items, image_items, text_items)
+
+        total_ms = total_sequence_duration_ms(proj.clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
+
+    def on_timeline_drop_image(self, path: str, start_s: float):
+        ov = self.store.add_image_overlay(path, start_s, duration=3.0)
+        from pathlib import Path as _P
+        proj = self.store.project()
+        self.canvas.set_project(proj)
         video_items = clips_to_timeline_items(proj.clips)
         image_items = [
             {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
@@ -309,3 +372,70 @@ class EditorWindow(QWidget):
             QMessageBox.warning(self, "Suppression", f"Erreur: {e}")
             return
 
+    def _prompt_for_project(self):
+        """Affiche une boîte de dialogue pour choisir entre nouveau projet ou chargement."""
+        msgBox = QMessageBox(self)
+        msgBox.setWindowTitle("Démarrer votre session")
+        msgBox.setText("Que voulez-vous faire ?")
+        msgBox.setInformativeText("Un nouveau projet vierge est chargé par défaut.")
+        
+        new_project_btn = msgBox.addButton("Nouveau Projet", QMessageBox.AcceptRole)
+        load_project_btn = msgBox.addButton("Charger un Projet", QMessageBox.ActionRole)
+        msgBox.setDefaultButton(new_project_btn)
+
+        msgBox.exec()
+        
+        clicked_button = msgBox.clickedButton()
+
+        if clicked_button == load_project_btn:
+            self._open_load_dialog()
+            
+        elif clicked_button == new_project_btn:
+            new_name, ok = QInputDialog.getText(
+                self, 
+                "Nommer votre projet", 
+                "Entrez le nom du nouveau projet:",
+                text=self.store.project().name
+            )
+            
+            if ok and new_name and new_name != self.store.project().name:
+                self.store.set_project_name(new_name)
+                print(f"Action: Nouveau projet nommé : {new_name}")
+            elif ok:
+                print("Action: Nouveau projet conservant le nom par défaut.")
+            else:
+                print("Création du nouveau projet annulée (nom par défaut conservé).")
+            
+    def _open_load_dialog(self):
+        """Ouvre la boîte de dialogue standard pour sélectionner un fichier .lmprj."""
+        from core.save_system.serializers import LMPRJChunkedSerializer
+        import os
+        
+        save_dir = LMPRJChunkedSerializer.get_save_dir()
+        
+        selected_file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Charger un projet Luminare (.lmprj)",
+            save_dir,
+            "Fichiers Projet Luminare (*.lmprj)"
+        )
+
+        if selected_file_path:
+            filename_to_load = os.path.basename(selected_file_path)
+            self.store.load_project(filename_to_load)
+            proj = self.store.project()
+            if proj.clips:
+                 self.media.load(QUrl.fromLocalFile(proj.clips[0].path))
+                 self.media.seek_ms(0)
+                 self._refresh_overlay()
+        else:
+            print("Chargement annulé, conservation du projet actuel.")
+
+    def setup_project_on_entry(self):
+        """
+        Gère le dialogue de choix Nouveau/Charger. 
+        À appeler juste avant de rendre l'éditeur visible.
+        """
+        self._prompt_for_project() 
+        self._refresh_overlay()
+        self.setWindowTitle(f"Luminare — {self.store.project().name}")

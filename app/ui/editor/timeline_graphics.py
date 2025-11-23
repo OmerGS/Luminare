@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QGraphicsLineItem
 )
 
-from ui.components.assets_panel import MIME_IMAGE_ASSET, MIME_VIDEO_ASSET
+from ui.components.media_list import MIME_IMAGE_ASSET, MIME_VIDEO_ASSET
 
 
 # --------------------------

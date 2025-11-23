@@ -44,6 +44,18 @@ class MediaController(QObject):
     def stop(self): self._player.stop()
     def seek_ms(self, ms: int): self._player.setPosition(max(0, int(ms)))
     def set_volume(self, v: float): self._audio.setVolume(max(0.0, min(1.0, float(v))))
+    def is_ready(self) -> bool: return self.duration_ms() > 0
+
+    def seek_relative_ms(self, delta_ms: int):
+        if not self.is_ready():
+            return
+
+        current_pos_ms = self.position_ms()
+        new_pos_ms = current_pos_ms + delta_ms
+        duration_ms = self.duration_ms()
+        new_pos_ms = max(0, min(new_pos_ms, duration_ms))
+
+        self.seek_ms(new_pos_ms)
 
     # info
     def duration_ms(self) -> int: return int(self._player.duration() or 0)
