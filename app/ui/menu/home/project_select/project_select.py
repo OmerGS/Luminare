@@ -7,7 +7,7 @@ from app.ui.components.title import Title
 from app.ui.components.menu_button import MenuButton
 
 class ProjectSelect(QWidget):
-    def __init__(self, go_to_editor, vids):
+    def __init__(self, go_to_editor,go_to_editor_with_project_name, vids):
         super().__init__()
         
         self.setStyleSheet(styles.WINDOW_STYLE)
@@ -26,7 +26,8 @@ class ProjectSelect(QWidget):
         for i, text in enumerate(vids):
             row = i // cols
             col = i % cols
-            layoutProject.addWidget(ProjectButton(text, go_to_editor), row, col, alignment=Qt.AlignmentFlag.AlignTop)
+            load_func = lambda checked, name=text: go_to_editor_with_project_name(name)
+            layoutProject.addWidget(ProjectButton(text, load_func), row, col, alignment=Qt.AlignmentFlag.AlignTop)
 
         layoutCreate.addLayout(layoutProject)
 

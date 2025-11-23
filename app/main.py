@@ -1,6 +1,8 @@
 # main.py (entrypoint racine)
 from __future__ import annotations
 import os
+
+from core.save_system.save_api import ProjectAPI
 # 1) Forcer le décodage logiciel (évite DXVA2)
 os.environ["QT_MEDIA_USE_HARDWARE_DECODER"] = "0"
 # (optionnel) 2) Rester sur le backend FFmpeg (comportement stable)
@@ -66,6 +68,7 @@ def main():
 
     # --- 2. Imports (après modification du sys.path) ---
     from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget, QVBoxLayout
+    from PySide6.QtCore import QUrl
     from app.ui.menu.home.home_menu import MainMenu
     from app.ui.editor.main_window import EditorWindow
     from core.store import Store
@@ -109,9 +112,39 @@ def main():
         editor.setup_project_on_entry()       
         stacked.setCurrentWidget(editor)
 
-    project_list_data = ["project_a", "project_b", "draft_video"]
 
-    main_menu = MainMenu(go_to_editor, project_list_data)
+    def go_to_editor_with_project_name(project_name):
+        """
+        Charge le projet spécifié par `project_name` et bascule vers l'éditeur.
+        """
+        store = editor.store
+        try:
+            store.load_project(project_name) # Charge le projet dans le Store
+            proj = store.project()
+            
+            # Si le projet contient des clips, charge le premier pour initialiser l'aperçu.
+            if proj.clips:
+                 editor.seq.seek_ms(0)
+                 
+            # Met à jour la timeline et l'affichage général de l'éditeur.
+            # `_on_store_clips_changed` est la méthode unifiée de refresh
+            editor._on_store_clips_changed() 
+            
+        except Exception as e:
+            # Afficher un message d'erreur simple si le chargement échoue
+            print(f"Erreur lors du chargement du projet '{project_name}' : {e}")
+            # Le projet actuel (potentiellement vide) reste chargé.
+            
+        # Bascule la vue vers l'éditeur
+        stacked.setCurrentWidget(editor)
+        # Met à jour le titre de la fenêtre de l'éditeur
+        editor.setWindowTitle(f"Luminare — {editor.store.project().name}")
+        
+        
+
+    project_list_data = ProjectAPI.list_projects()
+
+    main_menu = MainMenu(go_to_editor,go_to_editor_with_project_name, project_list_data)
 
     # Note: La logique "go_back_to_menu" est (probablement) gérée
     # à l'intérieur de EditorWindow via un signal.

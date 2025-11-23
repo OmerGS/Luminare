@@ -12,7 +12,7 @@ from app.ui.menu.home.settings.settings import SettingsMenu
 from app.ui.components.volume_slider import VolumeSlider
 
 class MainMenu(QWidget):
-    def __init__(self, go_to_editor, vids):
+    def __init__(self, go_to_editor,go_to_editor_with_project_name, vids):
         super().__init__()
 
         self.setStyleSheet(styles.WINDOW_STYLE)
@@ -31,7 +31,7 @@ class MainMenu(QWidget):
         layoutMenu.addWidget(LeaveButton("Leave", self.close_app), alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.layoutOther = QStackedLayout(self)
-        self.project_select = ProjectSelect(go_to_editor, vids)
+        self.project_select = ProjectSelect(go_to_editor,go_to_editor_with_project_name, vids)
         self.settings = SettingsMenu("testPath", "testPath2", self.show_settings)
 
         self.layoutOther.addWidget(self.project_select)
