@@ -8,6 +8,8 @@ os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
 # Alternative si tu préfères essayer l’ancien backend Windows Media Foundation :
 # os.environ["QT_MEDIA_BACKEND"] = "windows"
 from pathlib import Path
+from ui import styles
+
 import platform
 import sys
 
