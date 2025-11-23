@@ -1,6 +1,12 @@
 # main.py (entrypoint racine)
 from __future__ import annotations
 import os
+# 1) Forcer le décodage logiciel (évite DXVA2)
+os.environ["QT_MEDIA_USE_HARDWARE_DECODER"] = "0"
+# (optionnel) 2) Rester sur le backend FFmpeg (comportement stable)
+os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
+# Alternative si tu préfères essayer l’ancien backend Windows Media Foundation :
+# os.environ["QT_MEDIA_BACKEND"] = "windows"
 from pathlib import Path
 import platform
 import sys

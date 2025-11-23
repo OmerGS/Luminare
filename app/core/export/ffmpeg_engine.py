@@ -66,15 +66,17 @@ class FfmpegRenderEngine(IRenderEngine):
     
     def _make_trimmed_stream(self, clip: Clip, fps: int):
         inp = ffmpeg.input(clip.path)
-        start, end = clip.trim
+        start = clip.in_s
+        end = clip.out_s if clip.out_s > 0 else (clip.in_s + clip.duration_s)
         dur = max(0, end - start)
         
-        vid_stream = ffmpeg.trim(inp, start=start, duration=dur).setpts('PTS-STARTPTS')
-        aud_stream = (ffmpeg.input(clip.path)
-                           .filter_('atrim', start=start, duration=dur)
-                           .filter_('asetpts', 'PTS-STARTPTS'))
-        
-        vid_stream = vid_stream.filter('fps', fps=fps)
+        vid_stream = (inp['v']
+                      .trim(start=start, duration=dur).setpts('PTS-STARTPTS')
+                      .filter('fps', fps=fps))
+        aud_stream = (inp['a']
+                      .filter_('atrim', start=start, duration=dur)
+                      .filter_('asetpts', 'PTS-STARTPTS'))
+
         return vid_stream, aud_stream
 
     def _build_filter_chain(self, vid, filters: Filters, w: int, h: int):

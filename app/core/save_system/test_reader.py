@@ -33,7 +33,7 @@ def display_project(proj):
     print(f"\nClips ({len(proj.clips)}) :")
     if proj.clips:
         for i, clip in enumerate(proj.clips, 1):
-            print(f"  Clip {i} : {clip.path} (trim {clip.trim[0]} - {clip.trim[1]})")
+            print(f"  Clip {i} : {clip.path} (in={clip.in_s}, out={clip.out_s}, duration={clip.duration_s})")
     else:
         print("  Aucun clip trouvé.")
 

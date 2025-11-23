@@ -1,13 +1,18 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtWidgets import QInputDialog, QWidget, QVBoxLayout, QFileDialog, QMessageBox, QSplitter
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QSizePolicy, QSplitter, QFileDialog, QInputDialog
 
 from ui.editor.video_canvas import VideoCanvas
 from ui.editor.player_controls import PlayerControls
-from ui.editor.timeline import TimelineScroll
+from ui.editor.timeline_graphics import TimelineView
 from ui.editor.inspector import Inspector
+
 from core.media_controller import MediaController
+from core.sequence_player import SequencePlayer
 from core.store import Store
+from core.utils_timeline import clips_to_timeline_items, total_sequence_duration_ms
+
+
 from core.export.export_service import ExportService
 from core.export.export_profile import DEFAULT_PROFILES
 from core.export.engine_interface import RenderError
@@ -18,143 +23,111 @@ class EditorWindow(QWidget):
         super().__init__()
         self.resize(1280, 720)
 
+        
         # back
-        self.media = MediaController(self)
         self.store = store
         self.exporter = export_service
 
+        self.media = MediaController(self)        # player 1-fichier
+        self.seq = SequencePlayer(self.media, self.store, self) 
+
         # centre vidéo (canvas)
         self.canvas = VideoCanvas()
-        #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.controls = PlayerControls()
-        self.controls.set_media(self.media)
+        self.controls.set_media(self.seq)
 
-        # timeline
-        self.timeline_scroll = TimelineScroll(self)
-        self.timeline = self.timeline_scroll.timeline
-        self.timeline.imageDropped.connect(self.on_timeline_drop_image)
+        self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
 
         self.inspector = Inspector(self)
-        #self.inspector.setMinimumWidth(260)
-        #self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.inspector.setMinimumWidth(220)
+        self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         self.assets = AssetsPanel(self)
+        self.assets.setMinimumWidth(160)
 
-        #self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        #self.assets.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        #self.inspector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # --- Layout racine (UN SEUL) ---
-        #main_layout = QVBoxLayout(self)
-        #main_layout.setContentsMargins(6, 6, 6, 6)
-       # #main_layout.setSpacing(6)
-
-        #top_layout = QHBoxLayout()
-        #top_layout.setContentsMargins(0, 0, 0, 0)
-        #top_layout.setSpacing(6)
-
-        # Colonne gauche : Import + Assets
-        #left_col = QVBoxLayout()
-        #left_col.setContentsMargins(0, 0, 0, 0)
-        #left_col.setSpacing(6)
-        #left_col.addWidget(self.assets, stretch=1)
-
-        # Colonne centre : Vidéo + Controls
-        #center_col = QVBoxLayout()
-        #center_col.setContentsMargins(0, 0, 0, 0)
-        #center_col.setSpacing(6)
-        #center_col.addWidget(self.canvas, stretch=3)
-        #center_col.addLayout(self.controls)
-
-        # Colonne droite : Inspector
-        #right_col = QVBoxLayout()
-        #right_col.setContentsMargins(0, 0, 0, 0)
-        #right_col.setSpacing(6)
-        #right_col.addWidget(self.inspector, stretch=1)
-
-        #top_layout.addLayout(left_col, 1)
-        #top_layout.addLayout(center_col, 3)
-        #top_layout.addLayout(right_col, 1)
-
-
-        #main_layout.addLayout(top_layout, 5)
-        #main_layout.addWidget(self.timeline_scroll, 1)
-
-        # Colonne Gauche (Assets) : doit pouvoir se rétrécir mais rester lisible.
-        self.assets.setMinimumWidth(150) # AJOUTÉ : Taille minimale pour Assets
-
-        # Colonne Centre (Canvas + Controls) : doit avoir une taille minimale pour la vidéo.
-        self.canvas.setMinimumSize(300, 200) # AJOUTÉ : Taille minimale pour la zone vidéo
-
-        # Colonne Droite (Inspector) : a déjà 100 de minimum dans votre code ci-dessous.
-
-        # Timeline : Assure une hauteur minimale pour la timeline.
-        # Note : Votre classe TimelineScroll/TimelineWidget doit gérer son MinimumHeight correctement.
-        if hasattr(self.timeline, 'setMinimumHeight'):
-             self.timeline.setMinimumHeight(100) 
-
-        self.center_container = QWidget()
+        # --- Colonne centrale (Canvas + Controls) ---
+        self.center_container = QWidget(self)
         center_col_layout = QVBoxLayout(self.center_container)
         center_col_layout.setContentsMargins(0, 0, 0, 0)
         center_col_layout.setSpacing(6)
+        center_col_layout.addWidget(self.canvas, stretch=1)
+        center_col_layout.addWidget(self.controls)
 
-        center_col_layout.addWidget(self.canvas, stretch=3) 
-        center_col_layout.addWidget(self.controls) 
-
-        top_splitter = QSplitter(Qt.Orientation.Horizontal)
-
-
-        top_splitter.addWidget(self.assets)          # Colonne gauche
-        top_splitter.addWidget(self.center_container) # Colonne centre (Canvas + Controls)
+        # --- Splitter horizontal principal (Assets | Canvas | Inspector) ---
+        top_splitter = QSplitter(Qt.Horizontal, self)
+        top_splitter.addWidget(self.assets)
+        top_splitter.addWidget(self.center_container)
         top_splitter.addWidget(self.inspector)
+        top_splitter.setSizes([220, 820, 240])
 
-        top_splitter.setSizes([200, 600, 200])
+        # --- Splitter vertical (haut/bas) ---
+        main_splitter = QSplitter(Qt.Vertical, self)
+        main_splitter.addWidget(top_splitter)
+        main_splitter.addWidget(self.timeline_view)
+        main_splitter.setSizes([520, 240])
 
-        self.inspector.setMinimumWidth(100)
+        # --- Layout racine ---
+        root = QVBoxLayout(self)
+        root.setContentsMargins(6, 6, 6, 6)
+        root.setSpacing(6)
+        root.addWidget(main_splitter)
 
-        main_splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        main_splitter.addWidget(top_splitter)          # La zone supérieure complète
-        main_splitter.addWidget(self.timeline_scroll)  # La Timeline
-
-        main_splitter.setSizes([500, 100])
-        
-        # --- 4. Layout racine (UN SEUL) ---
-        # Le layout principal contient désormais uniquement le splitter principal
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(6, 6, 6, 6)
-        main_layout.setSpacing(6)
-        main_layout.addWidget(main_splitter)
-
-        self.setLayout(main_layout)
-
-
-        # Wiring vidéo et timeline (inchangé)
-        self.media.frameImageAvailable.connect(self.canvas.set_frame)
-        self.media.positionChanged.connect(self.canvas.set_playhead_ms)
+        # --- Connexions principales (via le SÉQUENCEUR) ---
+        self.seq.frameImageAvailable.connect(self.canvas.set_frame)
+        self.seq.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
-        self.timeline.seekRequested.connect(self.media.seek_ms)
-        self.media.durationChanged.connect(self.timeline.set_duration)
-        self.media.positionChanged.connect(self.timeline.set_position)
-        self.media.errorOccurred.connect(self._on_media_error)
-        self.media.durationChanged.connect(self.controls.set_duration)
-        self.media.positionChanged.connect(self.controls.set_position)
 
-        # Actions
-        self.controls.openRequested.connect(self._open_file)
+        # --- Timeline ↔ séquenceur ---
+        self.timeline_view.seekRequested.connect(self.seq.seek_ms)
+        self.seq.positionChanged.connect(self.timeline_view.set_playhead_ms)
+        self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
+
+        # --- DnD depuis timeline ---
+        self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
+        self.timeline_view.imageDropRequested.connect(self.on_timeline_drop_image)
+
+        # --- DnD / actions depuis le panneau assets ---
+        if hasattr(self.assets, "addImageRequested"):
+            self.assets.addImageRequested.connect(self._add_image_at_playhead)
+        if hasattr(self.assets, "addVideoRequested"):
+            self.assets.addVideoRequested.connect(self._add_video_at_playhead)
+
+        # --- Erreurs et timecodes (via le séquenceur) ---
+        self.seq.errorOccurred.connect(self._on_media_error)
+        self.seq.durationChanged.connect(self.controls.set_duration)   # durée totale séquence
+        self.seq.positionChanged.connect(self.controls.set_position)   # position globale
+
+        # --- Export ---
         self.controls.exportRequested.connect(self._export)
-        self.controls.zoomChanged.connect(self.timeline.set_zoom)
-        self.controls.seekRelativeRequested.connect(self.media.seek_relative_ms)
 
+        # --- Bouton ✂ Couper ---
+        if hasattr(self.controls, "splitRequested"):
+            self.controls.splitRequested.connect(self.split_current_clip)
 
-        # Inspector ↔ Store
-        self.inspector.addTitleRequested.connect(lambda: (self.store.add_text_overlay(), self._refresh_overlay()))
-        self.inspector.removeTitleRequested.connect(lambda: (self.store.remove_last_text_overlay(), self._refresh_overlay()))
-        self.inspector.titleTextChanged.connect(lambda txt: (self.store.update_last_overlay_text(txt), self._refresh_overlay()))
+        # --- Sélection de segment (clic sur timeline) + suppression ---
+        self._selected_segment = None  # tuple (index, start_s, duration_s) ou None
+        self.timeline_view.segmentSelected.connect(self._on_segment_selected)
+        self.timeline_view.segmentCleared.connect(self._on_segment_cleared)
+        if hasattr(self.controls, "deleteSelectionCloseRequested"):
+            self.controls.deleteSelectionCloseRequested.connect(self._delete_selected_segment)
+
+        # --- Inspector ↔ Store ---
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
+        self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
+
+        # --- Store → UI ---
+        # IMPORTANT : un seul point d'entrée pour refresh ET reset de la sélection.
+        self.store.overlayChanged.connect(self._on_store_clips_changed)
+        self.store.clipsChanged.connect(self._on_store_clips_changed)
+
+        # --- Initialisation ---
+        self._on_store_clips_changed()
+
+        # resize d’un clip vidéo (timeline → store)
+        self.timeline_view.clipResized.connect(self._on_clip_resized)
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
 
@@ -171,6 +144,7 @@ class EditorWindow(QWidget):
         # provisoire: clip unique avec une durée par défaut (ajustable après)
         self.store.set_clip(f, duration_s=5.0)
 
+    # ---------- Export ----------
     def _export(self):
         proj = self.store.project()
         
@@ -208,41 +182,195 @@ class EditorWindow(QWidget):
         if text:
             QMessageBox.warning(self, "Avertissement média", text)
 
+    # ---------- Overlays ----------
     def _on_filters_changed(self, b, c, s, v):
         self.store.set_filters(brightness=b, contrast=c, saturation=s, vignette=v)
 
     def _apply_title_start_from_playhead(self):
-        ms = self.media.position_ms()
+        ms = self.seq.position_ms()
         self.store.set_last_overlay_start(ms / 1000.0)
-        self._refresh_overlay()
 
     def _apply_title_end_from_playhead(self):
-        ms = self.media.position_ms()
+        ms = self.seq.position_ms()
         self.store.set_last_overlay_end(ms / 1000.0)
         self._refresh_overlay()
 
     def _refresh_overlay(self):
-        self.canvas.set_project(self.store.project())
-        self.timeline.set_overlays([
-            {"start": ov.start, "end": ov.end, "label": (ov.text or "Titre")}
-            for ov in self.store.project().text_overlays
-        ])
-        self.timeline.update()
+        """Rafraîchit les 3 pistes (vidéo/images/titres) dans la timeline unique."""
+        from pathlib import Path as _P
+        proj = self.store.project()
+        self.canvas.set_project(proj)
+
+        video_items = clips_to_timeline_items(proj.clips)
+        image_items = [
+            {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
+            for o in proj.image_overlays
+        ]
+        text_items = [
+            {"start": ov.start, "duration": max(0.1, (ov.end - ov.start)), "label": (ov.text or "Titre"), "color": "#d4b5ff"}
+            for ov in proj.text_overlays
+        ]
+
+        self.timeline_view.set_tracks(video_items, image_items, text_items)
+
+        total_ms = total_sequence_duration_ms(proj.clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
 
     def on_timeline_drop_image(self, path: str, start_s: float):
         ov = self.store.add_image_overlay(path, start_s, duration=3.0)
         from pathlib import Path as _P
-        self.timeline.set_images([
-            {"start": o.start, "end": o.end, "label": f"img:{_P(o.path).stem}"}
-            for o in self.store.project().image_overlays
-        ])
-        self.canvas.set_project(self.store.project())
-        self.media.seek_ms(int(start_s * 1000))
+        proj = self.store.project()
+        self.canvas.set_project(proj)
+        video_items = clips_to_timeline_items(proj.clips)
+        image_items = [
+            {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
+            for o in proj.image_overlays
+        ]
+        text_items = [
+            {"start": ov.start, "duration": max(0.1, (ov.end - ov.start)), "label": (ov.text or "Titre"), "color": "#d4b5ff"}
+            for ov in proj.text_overlays
+        ]
 
-    def _add_to_timeline(self, file_path):
-        """Ajoute le média importé directement à la timeline et au store."""
-        self.store.set_clip(file_path)
-        self.media.load(QUrl.fromLocalFile(file_path))
+        self.timeline_view.set_tracks(video_items, image_items, text_items)
+
+        total_ms = total_sequence_duration_ms(proj.clips)
+        if total_ms > 0:
+            self.timeline_view.set_total_duration(total_ms)
+
+    def _refresh_all_timeline_items(self):
+        """(Garde pour compat) : redirige vers _refresh_overlay."""
+        self._refresh_overlay()
+
+    def _on_store_clips_changed(self):
+        """Unifie refresh & remise à zéro de la sélection après toute modif Store."""
+        self._selected_segment = None
+        self._refresh_overlay()
+
+    # ---------- Clips / Timeline ----------
+    def _probe_duration_and_add(self, path: str, place_s: float):
+        """
+        Sonde la durée réelle du fichier (via MediaController) et ajoute le clip à la bonne place.
+        Évite les 5s fixes.
+        """
+        tmp = MediaController(self)
+
+        def _on_err(msg: str):
+            try:
+                tmp.errorOccurred.disconnect(_on_err)
+                tmp.durationChanged.disconnect(_on_dur)
+            except Exception:
+                pass
+            QMessageBox.warning(self, "Erreur média", msg)
+
+        def _on_dur(ms: int):
+            try:
+                tmp.errorOccurred.disconnect(_on_err)
+                tmp.durationChanged.disconnect(_on_dur)
+            except Exception:
+                pass
+            dur_s = max(0.1, ms / 1000.0)
+            if hasattr(self.store, "add_video_clip_at"):
+                self.store.add_video_clip_at(path, place_s, duration_s=dur_s)
+            else:
+                self.store.add_video_clip(path, in_s=0.0, out_s=dur_s, duration=dur_s)
+            # la connexion clipsChanged déclenchera _on_store_clips_changed
+
+        tmp.errorOccurred.connect(_on_err)
+        tmp.durationChanged.connect(_on_dur)
+        tmp.load(QUrl.fromLocalFile(path))  # charge en silencieux juste pour récupérer la durée
+
+    def _add_video_clip_at_seconds(self, path: str, start_s: float):
+        """Ajoute un clip vidéo AU TEMPS demandé avec sa vraie durée."""
+        self._probe_duration_and_add(path, start_s)
+
+    def _add_video_at_playhead(self, path: str):
+        start_s = self.seq.position_ms() / 1000.0
+        self._probe_duration_and_add(path, start_s)
+
+    # ---------- Images ----------
+    def _add_image_at_playhead(self, path: str):
+        start_s = self.seq.position_ms() / 1000.0
+        self.on_timeline_drop_image(path, start_s)
+
+    def on_timeline_drop_image(self, path: str, start_s: float):
+        self.store.add_image_overlay(path, start_s, duration=3.0)
+        self.canvas.set_project(self.store.project())
+        self.seq.seek_ms(int(start_s * 1000))
+        # overlayChanged -> _on_store_clips_changed rafraîchira
+
+    # ---------- Timeline resize → Store (vidéo) ----------
+    def _on_clip_resized(self, idx: int, start_s: float, in_s: float, duration_s: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.clips):
+            c = proj.clips[idx]
+            try:
+                c.in_s = float(in_s)
+                c.duration_s = max(0.1, float(duration_s))
+                c.out_s = c.in_s + c.duration_s
+            except Exception:
+                pass
+            # Informe le Store (qui déclenchera le refresh unifié)
+            if hasattr(self.store, "clipsChanged"):
+                self.store.clipsChanged.emit()
+            if hasattr(self.store, "changed"):
+                self.store.changed.emit()
+
+    # ---------- Action "✂ Couper" ----------
+    def split_current_clip(self):
+        """
+        Coupe exactement à la dernière position cliquée dans la timeline,
+        sinon au niveau du playhead si aucun clic n'a été mémorisé.
+        """
+        # Immobilise le playhead pendant l'opération
+        if hasattr(self.seq, "pause"):
+            self.seq.pause()
+
+        # Récupère la dernière position cliquée (timeline) sinon le playhead
+        t_click = None
+        if hasattr(self.timeline_view, "last_clicked_seconds"):
+            t_click = self.timeline_view.last_clicked_seconds()
+        t_s = float(t_click) if t_click is not None else (self.seq.position_ms() / 1000.0)
+
+        idx, clip, local = self.store.clip_at_global_time(t_s)
+        if idx >= 0 and clip is not None:
+            if not self.store.split_clip_at(idx, local):
+                # Si exactement sur une frontière, pousse d’un epsilon
+                eps = 1e-6
+                idx, clip, local = self.store.clip_at_global_time(t_s + eps)
+                self.store.split_clip_at(idx, local)
+
+            # Nettoie la dernière position de clic pour éviter tout "fantôme"
+            if hasattr(self.timeline_view, "clear_last_click"):
+                self.timeline_view.clear_last_click()
+            return
+
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Couper", "Aucun clip vidéo à cet instant.")
+
+
+    # ---------- Sélection depuis la timeline ----------
+    def _on_segment_selected(self, idx: int, start_s: float, duration_s: float):
+        self._selected_segment = (int(idx), float(start_s), float(duration_s))
+
+    def _on_segment_cleared(self):
+        self._selected_segment = None
+
+    def _delete_selected_segment(self):
+        if not self._selected_segment:
+            QMessageBox.information(self, "Suppression", "Clique d'abord un segment vidéo dans la timeline.")
+            return
+
+        idx, start_s, duration_s = self._selected_segment
+        a = float(start_s)
+        b = float(start_s + duration_s)
+
+        try:
+            # refermer le trou (le Store émettra clipsChanged → refresh + reset sélection)
+            self.store.delete_segment(a, b, close_gap=True)
+        except Exception as e:
+            QMessageBox.warning(self, "Suppression", f"Erreur: {e}")
+            return
 
     def _prompt_for_project(self):
         """Affiche une boîte de dialogue pour choisir entre nouveau projet ou chargement."""

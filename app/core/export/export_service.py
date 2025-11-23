@@ -23,7 +23,7 @@ class ExportService:
                 resolution=proj.resolution,
                 fps=proj.fps
             )
-            fallback_proj.add_clip({"path": fallback_src, "trim": (0, 5)})
+            fallback_proj.add_clip({"path": fallback_src, "in_s": 0, "out_s": 5, "duration_s": 5})
             return fallback_proj
         
         if not proj.clips:
@@ -72,7 +72,7 @@ class ExportService:
         except FileNotFoundError:
             if fallback_src:
                 proj = Project(name="Export Fallback", resolution=(1920,1080), fps=30)
-                proj.add_clip({"path": fallback_src, "trim": (0,5)})
+                proj.add_clip({"path": fallback_src, "in_s": 0, "out_s": 5, "duration_s": 5})
             else:
                 raise
         
@@ -88,6 +88,6 @@ class ExportService:
         
         seconds = min(5, max(1, int((duration_ms or 5000) / 1000)))
         proj = Project(name="Export Quick", resolution=(1920, 1080), fps=30)
-        proj.add_clip({"path": src_path, "trim": (0, seconds)})
+        proj.add_clip({"path": src_path, "in_s": 0, "out_s": seconds, "duration_s": seconds})
         
         return self.export_project(proj, out_path, active_profile, fallback_src=None)

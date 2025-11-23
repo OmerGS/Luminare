@@ -8,7 +8,9 @@ from app.core.save_system.save_api import ProjectAPI
 from app.custom_types.ImportTypes import ImportTypes
 from core.store import Store
 
-MIME_MEDIA_ASSET = "application/x-luminare-asset-media" 
+MIME_MEDIA_ASSET = "application/x-luminare-asset-media"
+MIME_IMAGE_ASSET = "application/x-luminare-asset-image"
+MIME_VIDEO_ASSET = "application/x-luminare/video"
 
 class MediaListWidget(QListWidget):
 

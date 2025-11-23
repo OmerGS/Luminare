@@ -55,7 +55,7 @@ class LMPRJChunkedSerializer:
 
             # Clips
             for clip in project.clips:
-                LMPRJChunkedSerializer.write_chunk(f, "CLIP", json.dumps({"path": clip.path, "trim": clip.trim}).encode("utf-8"))
+                LMPRJChunkedSerializer.write_chunk(f, "CLIP", json.dumps({"path": clip.path, "in_s": clip.in_s, "out_s": clip.out_s, "duration_s": clip.duration_s}).encode("utf-8"))
             # Text overlays
             for ov in project.text_overlays:
                 LMPRJChunkedSerializer.write_chunk(f, "OVER", json.dumps(vars(ov)).encode("utf-8"))
