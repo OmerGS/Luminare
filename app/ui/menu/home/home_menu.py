@@ -12,7 +12,7 @@ from app.ui.menu.home.settings.settings import SettingsMenu
 from app.ui.components.volume_slider import VolumeSlider
 
 class MainMenu(QWidget):
-    def __init__(self, go_to_editor, go_to_home, vids):
+    def __init__(self, go_to_editor, vids):
         super().__init__()
 
         self.setStyleSheet(styles.WINDOW_STYLE)

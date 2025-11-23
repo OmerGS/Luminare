@@ -109,7 +109,9 @@ def main():
         editor.setup_project_on_entry()       
         stacked.setCurrentWidget(editor)
 
-    main_menu = MainMenu(go_to_editor)
+    project_list_data = ["project_a", "project_b", "draft_video"]
+
+    main_menu = MainMenu(go_to_editor, project_list_data)
 
     # Note: La logique "go_back_to_menu" est (probablement) gérée
     # à l'intérieur de EditorWindow via un signal.
