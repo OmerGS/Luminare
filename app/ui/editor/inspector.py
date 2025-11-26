@@ -1,114 +1,109 @@
-# app/ui/inspector.py
+# ui/editor/inspector.py
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QFormLayout, QDoubleSpinBox, QCheckBox,
-    QLabel, QHBoxLayout, QLineEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QDoubleSpinBox, QCheckBox, QSizePolicy, QGroupBox
 )
+from typing import Optional
 
 class Inspector(QWidget):
-    addTitleRequested = Signal()
-    removeTitleRequested = Signal()
+    # ---- Signaux "Titres"
+    addTitleRequested = Signal(str)        # texte du champ -> ajouter un titre
+    removeLastTitleRequested = Signal()    # supprimer le dernier titre
+    setTitleStartRequested = Signal()      # "Début = curseur"
+    setTitleEndRequested = Signal()        # "Fin = curseur"
+    titleTextChanged = Signal(str)         # champ texte modifié (maj dernier titre)
+
+    # ---- Signaux "Filtres"
     filtersChanged = Signal(float, float, float, bool)  # b, c, s, vignette
-    titleTextChanged = Signal(str)
-    setTitleStartRequested = Signal()  # utilise le playhead courant
-    setTitleEndRequested = Signal()    # utilise le playhead courant
-    titlePositionChanged = Signal(float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(260)
-        self._current_overlay = None
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignTop)
+        self.setMinimumWidth(220)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._selected_overlay = None
 
-        # --- Titres ---
-        layout.addWidget(QLabel("Titres"))
-        self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("Texte du titre…")
-        self.title_edit.textChanged.connect(self.titleTextChanged.emit)
-        layout.addWidget(self.title_edit)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(6, 6, 6, 6)
+        root.setSpacing(8)
 
-        btns = QHBoxLayout()
-        btn_add = QPushButton("Ajouter un titre")
-        btn_del = QPushButton("Supprimer dernier")
-        btns.addWidget(btn_add); btns.addWidget(btn_del)
-        layout.addLayout(btns)
+        # ---------- Bloc Titres ----------
+        gb_titles = QGroupBox("Titres")
+        v = QVBoxLayout(gb_titles)
 
-        btn_time = QHBoxLayout()
-        btn_set_start = QPushButton("Début = curseur")
-        btn_set_end   = QPushButton("Fin = curseur")
-        btn_time.addWidget(btn_set_start); btn_time.addWidget(btn_set_end)
-        layout.addLayout(btn_time)
+        self.edt_title = QLineEdit()
+        v.addWidget(self.edt_title)
 
-        btn_add.clicked.connect(self.addTitleRequested.emit)
-        btn_del.clicked.connect(self.removeTitleRequested.emit)
-        btn_set_start.clicked.connect(self.setTitleStartRequested.emit)
-        btn_set_end.clicked.connect(self.setTitleEndRequested.emit)
+        row_btn1 = QHBoxLayout()
+        self.btn_add_title = QPushButton("Ajouter un titre")
+        self.btn_del_last  = QPushButton("Supprimer dernier")
+        row_btn1.addWidget(self.btn_add_title)
+        row_btn1.addWidget(self.btn_del_last)
+        v.addLayout(row_btn1)
 
-        # --- Couleur (export) ---
-        layout.addSpacing(12)
-        layout.addWidget(QLabel("Couleur (export)"))
+        row_btn2 = QHBoxLayout()
+        self.btn_start = QPushButton("Début = curseur")
+        self.btn_end   = QPushButton("Fin = curseur")
+        row_btn2.addWidget(self.btn_start)
+        row_btn2.addWidget(self.btn_end)
+        v.addLayout(row_btn2)
 
-        form = QFormLayout()
-        self.spin_b = QDoubleSpinBox(); self.spin_b.setRange(-1.0, 1.0); self.spin_b.setSingleStep(0.05); self.spin_b.setValue(0.0)
-        self.spin_c = QDoubleSpinBox(); self.spin_c.setRange(0.0, 3.0); self.spin_c.setSingleStep(0.05); self.spin_c.setValue(1.0)
-        self.spin_s = QDoubleSpinBox(); self.spin_s.setRange(0.0, 3.0); self.spin_s.setSingleStep(0.05); self.spin_s.setValue(1.0)
-        self.chk_v  = QCheckBox("Vignette"); self.chk_v.setChecked(False)
+        root.addWidget(gb_titles)
 
-        form.addRow("Brightness", self.spin_b)
-        form.addRow("Contrast", self.spin_c)
-        form.addRow("Saturation", self.spin_s)
-        form.addRow("", self.chk_v)
-        layout.addLayout(form)
+        # ---------- Bloc Filtres ----------
+        gb_filters = QGroupBox("Couleur (export)")
+        fv = QVBoxLayout(gb_filters)
 
-        for w in (self.spin_b, self.spin_c, self.spin_s):
-            w.valueChanged.connect(self._emit_filters)
-        self.chk_v.toggled.connect(self._emit_filters)
+        def mk_spin(label_text, default):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label_text))
+            sp = QDoubleSpinBox()
+            sp.setRange(-10_000.0, 10_000.0)
+            sp.setDecimals(2)
+            sp.setSingleStep(0.05)
+            sp.setValue(default)
+            sp.setAlignment(Qt.AlignRight)
+            row.addWidget(sp)
+            fv.addLayout(row)
+            return sp
 
-        layout.addStretch(1)
+        self.sp_brightness = mk_spin("Brightness", 0.00)
+        self.sp_contrast   = mk_spin("Contrast",   1.00)
+        self.sp_saturation = mk_spin("Saturation", 1.00)
 
-        # --- Position du titre sélectionné ---
-        layout.addSpacing(8)
-        layout.addWidget(QLabel("Position du titre (normalisée)"))
+        self.cb_vignette = QCheckBox("Vignette")
+        fv.addWidget(self.cb_vignette)
 
-        pos_form = QFormLayout()
-        self.pos_x_spin = QDoubleSpinBox(); self.pos_x_spin.setRange(0.0, 1.0); self.pos_x_spin.setSingleStep(0.01)
-        self.pos_y_spin = QDoubleSpinBox(); self.pos_y_spin.setRange(0.0, 1.0); self.pos_y_spin.setSingleStep(0.01)
+        root.addWidget(gb_filters)
+        root.addStretch(1)
 
-        pos_form.addRow("X :", self.pos_x_spin)
-        pos_form.addRow("Y :", self.pos_y_spin)
-        layout.addLayout(pos_form)
+        # ---------- Connexions ----------
+        # Titres
+        self.btn_add_title.clicked.connect(lambda: self.addTitleRequested.emit(self.edt_title.text()))
+        self.btn_del_last.clicked.connect(self.removeLastTitleRequested.emit)
+        self.btn_start.clicked.connect(self.setTitleStartRequested.emit)
+        self.btn_end.clicked.connect(self.setTitleEndRequested.emit)
+        self.edt_title.textEdited.connect(self.titleTextChanged.emit)
 
-        # Connecte les spins
-        self.pos_x_spin.valueChanged.connect(self._on_pos_changed)
-        self.pos_y_spin.valueChanged.connect(self._on_pos_changed)
-
-
-    def _emit_filters(self, *_):
-        self.filtersChanged.emit(
-            self.spin_b.value(), self.spin_c.value(), self.spin_s.value(), self.chk_v.isChecked()
-        )
-
-        # --- NOUVEAU : appelée par le canvas ou le main window
-    def set_selected_overlay(self, ov):
-        """Mise à jour de l'inspector quand on sélectionne un titre."""
-        self._current_overlay = ov
-        if ov is None:
-            self.pos_x_spin.setEnabled(False)
-            self.pos_y_spin.setEnabled(False)
-            self.pos_x_spin.setValue(0.0)
-            self.pos_y_spin.setValue(0.0)
-            self.title_edit.setText("")
-        else:
-            self.pos_x_spin.setEnabled(True)
-            self.pos_y_spin.setEnabled(True)
-            self.pos_x_spin.setValue(getattr(ov, "x", 0.0))
-            self.pos_y_spin.setValue(getattr(ov, "y", 0.0))
-            self.title_edit.setText(getattr(ov, "text", ""))
-
-    def _on_pos_changed(self):
-        if self._current_overlay:
-            self._current_overlay.x = self.pos_x_spin.value()
-            self._current_overlay.y = self.pos_y_spin.value()
-            self.titlePositionChanged.emit(self._current_overlay.x, self._current_overlay.y)
-
+        # Filtres (toutes modifs émettent)
+        def emit_filters():
+            self.filtersChanged.emit(
+                float(self.sp_brightness.value()),
+                float(self.sp_contrast.value()),
+                float(self.sp_saturation.value()),
+                bool(self.cb_vignette.isChecked()),
+            )
+        self.sp_brightness.valueChanged.connect(lambda *_: emit_filters())
+        self.sp_contrast.valueChanged.connect(lambda *_: emit_filters())
+        self.sp_saturation.valueChanged.connect(lambda *_: emit_filters())
+        self.cb_vignette.toggled.connect(lambda *_: emit_filters())
+    
+    def set_selected_overlay(self, overlay: Optional[object]):
+        """
+        Met à jour le champ texte quand un overlay (titre) est sélectionné sur la vidéo.
+        """
+        self._selected_overlay = overlay
+        # éviter d’émettre titleTextChanged pendant qu’on remplit le champ
+        self.edt_title.blockSignals(True)
+        self.edt_title.setText(getattr(overlay, "text", "") if overlay else "")
+        self.edt_title.blockSignals(False)

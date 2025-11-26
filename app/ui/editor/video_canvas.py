@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QRect, Signal
-from PySide6.QtGui import QPainter, QPixmap, QImage, QFont, QColor, QPen, QBrush
+from PySide6.QtGui import QPainter, QPixmap, QImage, QFont, QColor, QPen
 from PySide6.QtWidgets import QWidget, QSizePolicy
 from core.project import Project
 
@@ -16,11 +16,23 @@ class VideoCanvas(QWidget):
         self._project: Project | None = None
         self._playhead_ms: int = 0
 
+        # --- Sélection & drag (textes) ---
         self._selected_overlay = None
-        self._dragging = False
+        self._dragging_text = False
         self._drag_offset = (0, 0)  # offset souris dans le rect du texte
         self._last_overlay_boxes: list[tuple[object, QRect]] = []
-        self._last_target_rect: QRect | None = None  # rect de la vidéo (letterbox)
+
+        # --- Sélection & drag (images) ---
+        self._selected_image_overlay = None
+        self._dragging_image = False
+        self._drag_offset_img = (0, 0)  # offset souris dans le rect de l'image
+        self._last_image_boxes: list[tuple[object, QRect]] = []
+
+        # --- Letterbox rect ---
+        self._last_target_rect: QRect | None = None
+
+        # --- cache images ---
+        self._image_cache: dict[str, QPixmap] = {}
 
     # --- API ---
     def set_frame(self, img: QImage):
@@ -42,15 +54,26 @@ class VideoCanvas(QWidget):
         r = self.rect()
         p.fillRect(r, Qt.black)
 
+        # reset des hitboxes
         self._last_overlay_boxes.clear()
+        self._last_image_boxes.clear()
         self._last_target_rect = None
 
+        # calcule le rect "target" (zone d'affichage vidéo)
         if self._frame:
             pix = QPixmap.fromImage(self._frame)
             target = self._fit_rect_keep_aspect(pix.width(), pix.height(), r)
             self._last_target_rect = target
             p.drawPixmap(target, pix)
-            self._paint_overlay(p, target)
+        else:
+            target = r
+            self._last_target_rect = target
+
+        # 1) IMAGES (sous les textes, au-dessus de la vidéo)
+        self._paint_image_overlays(p, target)
+
+        # 2) TEXTES
+        self._paint_text_overlays(p, target)
 
         p.end()
 
@@ -63,8 +86,68 @@ class VideoCanvas(QWidget):
         y = bounds.y() + (bounds.height()-nh)//2
         return QRect(x, y, nw, nh)
 
-    def _paint_overlay(self, p: QPainter, target: QRect):
-        """Dessine les titres et enregistre leurs zones cliquables."""
+    # ---------- IMAGES : affichage + hitbox ----------
+    def _paint_image_overlays(self, p: QPainter, target: QRect):
+        if not self._project or not getattr(self._project, "image_overlays", None):
+            return
+
+        t_sec = self._playhead_ms / 1000.0
+        W, H = target.width(), target.height()
+
+        for ov in self._project.image_overlays:
+            # actif dans le temps ?
+            if not (ov.start <= t_sec < ov.end):
+                continue
+
+            path = getattr(ov, "path", None)
+            if not path:
+                continue
+
+            # charge depuis cache
+            pix = self._image_cache.get(path)
+            if pix is None:
+                tmp = QPixmap(path)
+                if tmp.isNull():
+                    continue
+                pix = tmp
+                self._image_cache[path] = pix
+
+            # valeurs par défaut (centré, échelle 1.0)
+            if not hasattr(ov, "x"): ov.x = 0.5
+            if not hasattr(ov, "y"): ov.y = 0.5
+            if not hasattr(ov, "scale"): ov.scale = 1.0
+
+            # taille de base "contain" dans target
+            base = self._fit_rect_keep_aspect(pix.width(), pix.height(), target)
+            bw, bh = base.width(), base.height()
+
+            # applique l'échelle
+            sw = max(1, int(bw * float(ov.scale)))
+            sh = max(1, int(bh * float(ov.scale)))
+
+            # position : ov.x/ov.y sont des coords normalisées (0..1) au CENTRE de l'image
+            cx = target.x() + int(float(ov.x) * W)
+            cy = target.y() + int(float(ov.y) * H)
+            rx = cx - sw // 2
+            ry = cy - sh // 2
+
+            rect_img = QRect(rx, ry, sw, sh)
+
+            # dessine
+            p.drawPixmap(rect_img, pix)
+
+            # si sélectionné, petit cadre
+            if ov is self._selected_image_overlay:
+                pen = QPen(QColor("yellow"))
+                pen.setWidth(2)
+                p.setPen(pen); p.setBrush(Qt.NoBrush)
+                p.drawRect(rect_img)
+
+            # mémorise la hitbox pour la souris
+            self._last_image_boxes.append((ov, rect_img))
+
+    # ---------- TEXTES : affichage + hitbox ----------
+    def _paint_text_overlays(self, p: QPainter, target: QRect):
         if not self._project or not getattr(self._project, "text_overlays", None):
             return
 
@@ -72,9 +155,10 @@ class VideoCanvas(QWidget):
         W, H = target.width(), target.height()
 
         for ov in self._project.text_overlays:
-            # migration douce : si x/y ne sont pas numériques, on fallback
-            if not isinstance(getattr(ov, "x", 0.0), (float, int)) or not isinstance(getattr(ov, "y", 0.0), (float, int)):
+            # defaults pour migration
+            if not isinstance(getattr(ov, "x", 0.0), (float, int)):
                 ov.x = 0.5
+            if not isinstance(getattr(ov, "y", 0.0), (float, int)):
                 ov.y = 0.1
 
             if not (ov.start <= t_sec <= ov.end):
@@ -115,40 +199,124 @@ class VideoCanvas(QWidget):
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             pt = e.position().toPoint()
-            for ov, rect in self._last_overlay_boxes:
+
+            # 1) test d'abord les IMAGES (au-dessus : z-order “interactif”)
+            for ov, rect in reversed(self._last_image_boxes):
+                if rect.contains(pt):
+                    self._selected_image_overlay = ov
+                    self._dragging_image = True
+                    self._drag_offset_img = (pt.x() - rect.x(), pt.y() - rect.y())
+                    # désélectionne le texte si besoin
+                    self._selected_overlay = None
+                    self.overlaySelected.emit(None)
+                    self.update()
+                    return
+
+            # 2) sinon, TEST LES TEXTES
+            for ov, rect in reversed(self._last_overlay_boxes):
                 if rect.contains(pt):
                     self._selected_overlay = ov
                     self.overlaySelected.emit(ov)
-                    self._dragging = True
+                    self._dragging_text = True
                     self._drag_offset = (pt.x() - rect.x(), pt.y() - rect.y())
+                    # désélectionne l'image
+                    self._selected_image_overlay = None
                     self.update()
                     return
-            # clic à côté -> désélection
+
+            # clic à côté -> tout désélectionner
             self._selected_overlay = None
+            self._selected_image_overlay = None
             self.overlaySelected.emit(None)
             self.update()
+
         super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e):
-        if self._dragging and self._selected_overlay and self._last_target_rect:
+        # drag d'IMAGE
+        if self._dragging_image and self._selected_image_overlay and self._last_target_rect:
+            ov = self._selected_image_overlay
+            target = self._last_target_rect
+            W, H = target.width(), target.height()
+
+            # retrouve la taille actuelle de l'image pour centrer pendant le drag
+            # reconstitue le rect comme dans _paint_image_overlays (sans dessiner)
+            # taille base
+            path = getattr(ov, "path", None)
+            pix = self._image_cache.get(path)
+            if pix is None and path:
+                tmp = QPixmap(path)
+                if not tmp.isNull():
+                    pix = tmp
+                    self._image_cache[path] = pix
+            if pix:
+                base = self._fit_rect_keep_aspect(pix.width(), pix.height(), target)
+                bw, bh = base.width(), base.height()
+            else:
+                bw, bh = target.width(), target.height()
+
+            scale = float(getattr(ov, "scale", 1.0))
+            sw = max(1, int(bw * scale))
+            sh = max(1, int(bh * scale))
+
+            px = int(e.position().x() - self._drag_offset_img[0])
+            py = int(e.position().y() - self._drag_offset_img[1])
+
+            # centre à partir du coin haut-gauche calculé
+            cx = px + sw // 2
+            cy = py + sh // 2
+
+            # clamp centre dans la zone vidéo
+            cx = max(target.x(), min(cx, target.right()))
+            cy = max(target.y(), min(cy, target.bottom()))
+
+            # convertit en coords normalisées
+            new_x = (cx - target.x()) / float(W)
+            new_y = (cy - target.y()) / float(H)
+            ov.x = max(0.0, min(new_x, 1.0))
+            ov.y = max(0.0, min(new_y, 1.0))
+            self.update()
+
+        # drag de TEXTE
+        if self._dragging_text and self._selected_overlay and self._last_target_rect:
             target = self._last_target_rect
             W, H = target.width(), target.height()
             px = int(e.position().x() - self._drag_offset[0])
             py = int(e.position().y() - self._drag_offset[1])
 
-            # clamp dans le target
             px = max(target.x(), min(px, target.right()))
             py = max(target.y(), min(py, target.bottom()))
 
-            # conversion en coordonnées normalisées
             new_x = (px - target.x()) / float(W)
             new_y = (py - target.y()) / float(H)
             self._selected_overlay.x = max(0.0, min(new_x, 1.0))
             self._selected_overlay.y = max(0.0, min(new_y, 1.0))
             self.update()
+
         super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.LeftButton:
-            self._dragging = False
+            self._dragging_text = False
+            self._dragging_image = False
         super().mouseReleaseEvent(e)
+
+    # --- zoom sur l’image sélectionnée (Ctrl + molette) ---
+    def wheelEvent(self, e):
+        if self._selected_image_overlay is None:
+            return super().wheelEvent(e)
+
+        if not (e.modifiers() & Qt.ControlModifier):
+            # molette normale = comportement par défaut (scroll)
+            return super().wheelEvent(e)
+
+        # Ctrl + molette => zoom image sélectionnée
+        delta = e.angleDelta().y()
+        ov = self._selected_image_overlay
+        cur = float(getattr(ov, "scale", 1.0))
+        # facteur de zoom doux
+        factor = 1.0 + (0.1 if delta > 0 else -0.1)
+        new_scale = max(0.1, min(cur * factor, 5.0))
+        ov.scale = new_scale
+        self.update()
+        e.accept()

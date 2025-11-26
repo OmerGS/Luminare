@@ -118,6 +118,15 @@ class EditorWindow(QWidget):
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
         self.canvas.overlaySelected.connect(self.inspector.set_selected_overlay)
 
+        if hasattr(self.inspector, "addTitleRequested"):
+            self.inspector.addTitleRequested.connect(self._add_title_at_playhead)
+
+        if hasattr(self.inspector, "removeLastTitleRequested"):
+            self.inspector.removeLastTitleRequested.connect(self.store.remove_last_text_overlay)
+
+        if hasattr(self.inspector, "titleTextChanged"):
+            self.inspector.titleTextChanged.connect(self.store.update_last_overlay_text)
+
         # --- Store → UI ---
         # IMPORTANT : un seul point d'entrée pour refresh ET reset de la sélection.
         self.store.overlayChanged.connect(self._on_store_clips_changed)
@@ -196,11 +205,13 @@ class EditorWindow(QWidget):
         self._refresh_overlay()
 
     def _refresh_overlay(self):
-        """Rafraîchit les 3 pistes (vidéo/images/titres) dans la timeline unique."""
+        """Rafraîchit les 3 pistes (vidéo/images/titres) et ajuste la durée totale
+        en prenant le max entre la séquence vidéo et la fin des overlays."""
         from pathlib import Path as _P
         proj = self.store.project()
         self.canvas.set_project(proj)
 
+        # Items pour la vue
         video_items = clips_to_timeline_items(proj.clips)
         image_items = [
             {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
@@ -213,30 +224,19 @@ class EditorWindow(QWidget):
 
         self.timeline_view.set_tracks(video_items, image_items, text_items)
 
-        total_ms = total_sequence_duration_ms(proj.clips)
+        # --- Durée totale incluant overlays ---
+        # 1) durée des clips vidéo (ms)
+        video_ms = total_sequence_duration_ms(proj.clips)
+
+        # 2) fin max des overlays (images + textes) -> ms
+        end_images_s = max([o.end for o in proj.image_overlays], default=0.0)
+        end_texts_s  = max([ov.end for ov in proj.text_overlays], default=0.0)
+        overlays_ms = int(max(end_images_s, end_texts_s) * 1000.0)
+
+        total_ms = max(video_ms, overlays_ms)
         if total_ms > 0:
             self.timeline_view.set_total_duration(total_ms)
 
-    def on_timeline_drop_image(self, path: str, start_s: float):
-        ov = self.store.add_image_overlay(path, start_s, duration=3.0)
-        from pathlib import Path as _P
-        proj = self.store.project()
-        self.canvas.set_project(proj)
-        video_items = clips_to_timeline_items(proj.clips)
-        image_items = [
-            {"start": o.start, "duration": max(0.1, (o.end - o.start)), "label": f"img:{_P(o.path).stem}", "color": "#9be7a5"}
-            for o in proj.image_overlays
-        ]
-        text_items = [
-            {"start": ov.start, "duration": max(0.1, (ov.end - ov.start)), "label": (ov.text or "Titre"), "color": "#d4b5ff"}
-            for ov in proj.text_overlays
-        ]
-
-        self.timeline_view.set_tracks(video_items, image_items, text_items)
-
-        total_ms = total_sequence_duration_ms(proj.clips)
-        if total_ms > 0:
-            self.timeline_view.set_total_duration(total_ms)
 
     def _refresh_all_timeline_items(self):
         """(Garde pour compat) : redirige vers _refresh_overlay."""
@@ -439,3 +439,16 @@ class EditorWindow(QWidget):
         self._prompt_for_project() 
         self._refresh_overlay()
         self.setWindowTitle(f"Luminare — {self.store.project().name}")
+
+        # Ajouter des titres
+
+    def _add_title_at_playhead(self, text: str):
+        """Ajoute un titre à la position du playhead, durée par défaut 3s."""
+        start_s = self.seq.position_ms() / 1000.0
+        # 1) créer un overlay vide
+        self.store.add_text_overlay()
+        # 2) poser son texte + bornes
+        self.store.update_last_overlay_text(text or "")
+        self.store.set_last_overlay_start(start_s)
+        self.store.set_last_overlay_end(start_s + 3.0)
+        # 3) le rafraîchissement part automatiquement via overlayChanged

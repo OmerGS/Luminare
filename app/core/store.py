@@ -351,7 +351,9 @@ class Store(QObject):
         self.changed.emit()
 
     def add_image_overlay(self, path: str, start: float, duration: float = 3.0):
-        ov = ImageOverlay(path=path, start=float(start), end=float(start) + float(duration))
+        s = max(0.0, float(start))
+        d = max(0.1, float(duration))
+        ov = ImageOverlay(path=path, start=s, end=s + d)
         self._project.image_overlays.append(ov)
         self.overlayChanged.emit()
         self.changed.emit()
