@@ -39,6 +39,15 @@ class EditorWindow(QWidget):
 
         self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
 
+        # overlays: appliquer les déplacements/redimensions uniquement en fin de drag
+        self.timeline_view.imageOverlayChangedRequested.connect(self._apply_image_move_resize)
+        self.timeline_view.textOverlayChangedRequested.connect(self._apply_text_move_resize)
+
+        # overlays: clic droit → supprimer
+        self.timeline_view.imageOverlayDeleteRequested.connect(self._delete_image_overlay)
+        self.timeline_view.textOverlayDeleteRequested.connect(self._delete_text_overlay)
+
+
         self.inspector = Inspector(self)
         self.inspector.setMinimumWidth(220)
         self.inspector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
@@ -137,6 +146,15 @@ class EditorWindow(QWidget):
 
         # resize d’un clip vidéo (timeline → store)
         self.timeline_view.clipResized.connect(self._on_clip_resized)
+        # drag/resize d’overlays : on applique au relâchement
+        self.timeline_view.imageOverlayChangedRequested.connect(self._apply_image_move_resize)
+        self.timeline_view.textOverlayChangedRequested.connect(self._apply_text_move_resize)
+
+        # clic droit : suppression
+        self.timeline_view.imageOverlayDeleteRequested.connect(self._delete_image_overlay)
+        self.timeline_view.textOverlayDeleteRequested.connect(self._delete_text_overlay)
+
+
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
 
@@ -452,3 +470,72 @@ class EditorWindow(QWidget):
         self.store.set_last_overlay_start(start_s)
         self.store.set_last_overlay_end(start_s + 3.0)
         # 3) le rafraîchissement part automatiquement via overlayChanged
+
+    def _on_image_overlay_changed(self, idx: int, start_s: float, duration_s: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.image_overlays):
+            ov = proj.image_overlays[idx]
+            ov.start = max(0.0, float(start_s))
+            ov.end   = ov.start + max(0.1, float(duration_s))
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+            # rafraîchit juste la timeline, pas besoin de toucher au player ici
+            self._refresh_overlay()
+
+    def _on_image_overlay_deleted(self, idx: int):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.image_overlays):
+            proj.image_overlays.pop(idx)
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+            self._refresh_overlay()
+
+    def _on_text_overlay_changed(self, idx: int, start_s: float, duration_s: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.text_overlays):
+            ov = proj.text_overlays[idx]
+            ov.start = max(0.0, float(start_s))
+            ov.end   = ov.start + max(0.1, float(duration_s))
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+            self._refresh_overlay()
+
+    def _on_text_overlay_deleted(self, idx: int):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.text_overlays):
+            proj.text_overlays.pop(idx)
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+            self._refresh_overlay()
+
+    def _apply_image_move_resize(self, idx: int, start: float, duration: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.image_overlays):
+            ov = proj.image_overlays[idx]
+            ov.start = float(start)
+            ov.end   = float(start) + float(duration)
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+
+    def _apply_text_move_resize(self, idx: int, start: float, duration: float):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.text_overlays):
+            ov = proj.text_overlays[idx]
+            ov.start = float(start)
+            ov.end   = float(start) + float(duration)
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+
+    def _delete_image_overlay(self, idx: int):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.image_overlays):
+            del proj.image_overlays[idx]
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
+
+    def _delete_text_overlay(self, idx: int):
+        proj = self.store.project()
+        if 0 <= idx < len(proj.text_overlays):
+            del proj.text_overlays[idx]
+            if hasattr(self.store, "overlayChanged"): self.store.overlayChanged.emit()
+            if hasattr(self.store, "changed"): self.store.changed.emit()
