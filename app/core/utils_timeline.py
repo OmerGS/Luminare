@@ -1,10 +1,8 @@
-# app/core/utils_timeline.py
 from __future__ import annotations
 from typing import List, Dict, Any
 from dataclasses import is_dataclass
 
 def _clip_bounds_seconds(c: Any) -> tuple[float, float]:
-    # Nouveau modèle
     if hasattr(c, "in_s") and hasattr(c, "out_s"):
         start = float(getattr(c, "in_s", 0.0))
         out_s = float(getattr(c, "out_s", 0.0))
@@ -15,7 +13,6 @@ def _clip_bounds_seconds(c: Any) -> tuple[float, float]:
             end = out_s
         return max(0.0, start), max(start, end)
 
-    # fallback
     return 0.0, 0.0
 
 

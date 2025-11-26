@@ -1,4 +1,3 @@
-# core/audio_analyzer.py
 from __future__ import annotations
 import hashlib, json, wave, subprocess, shutil
 from pathlib import Path
@@ -75,7 +74,6 @@ def compute_rms_envelope(wav_path: Path, window_ms: int = 10) -> tuple[np.ndarra
         if seg.size:
             env[i] = np.sqrt(np.mean(seg * seg))
 
-    # normalisation robuste (évite un pic isolé)
     p95 = float(np.percentile(env, 95)) if env.size else 1.0
     scale = p95 if p95 > 1e-6 else 1.0
     env = np.clip(env / scale, 0.0, 1.0)
@@ -92,7 +90,6 @@ def analyze_waveform(src_path: str, sr: int = 8000, window_ms: int = 10) -> tupl
     npy_path = cache / f"{h}.npy"
     meta_path = cache / f"{h}.json"
 
-    # cache npy
     if npy_path.exists() and meta_path.exists():
         try:
             env = np.load(npy_path)
@@ -101,7 +98,6 @@ def analyze_waveform(src_path: str, sr: int = 8000, window_ms: int = 10) -> tupl
         except Exception:
             pass
 
-    # (ré)extraction WAV si nécessaire
     if not wav_path.exists():
         extract_audio_wav(src_path, wav_path, sr=sr)
 

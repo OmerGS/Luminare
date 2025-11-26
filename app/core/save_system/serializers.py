@@ -38,25 +38,18 @@ class LMPRJChunkedSerializer:
             proj_meta = {"version": LMPRJChunkedSerializer.VERSION, "name": project.name}
             LMPRJChunkedSerializer.write_chunk(f, "PROJ", json.dumps(proj_meta).encode("utf-8"))
 
-            # Resolution
             LMPRJChunkedSerializer.write_chunk(f, "RESO", struct.pack("II", *project.resolution))
-            # FPS
             LMPRJChunkedSerializer.write_chunk(f, "FPS ", struct.pack("f", project.fps))
-            # Output
             LMPRJChunkedSerializer.write_chunk(f, "OUTP", project.output.encode("utf-8"))
-            # Audio normalize
             LMPRJChunkedSerializer.write_chunk(f, "AUDN", struct.pack("?", project.audio_normalize))
-            # Filters
             LMPRJChunkedSerializer.write_chunk(f, "FILT", json.dumps(vars(project.filters)).encode("utf-8"))
 
             if project.imported_assets:
                 imported_data = json.dumps(project.imported_assets).encode("utf-8")
                 LMPRJChunkedSerializer.write_chunk(f, "IMPT", imported_data)
 
-            # Clips
             for clip in project.clips:
                 LMPRJChunkedSerializer.write_chunk(f, "CLIP", json.dumps({"path": clip.path, "in_s": clip.in_s, "out_s": clip.out_s, "duration_s": clip.duration_s}).encode("utf-8"))
-            # Text overlays
             for ov in project.text_overlays:
                 LMPRJChunkedSerializer.write_chunk(f, "OVER", json.dumps(vars(ov)).encode("utf-8"))
 
@@ -112,7 +105,6 @@ class LMPRJChunkedSerializer:
 
         return proj
 
-    # --- Utils ---
     @staticmethod
     def list_projects() -> List[str]:
         save_dir = LMPRJChunkedSerializer.get_save_dir()

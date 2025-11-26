@@ -20,7 +20,5 @@ class IRenderEngine(abc.ABC):
         """
         Effectue le rendu d'un objet Project vers un fichier de sortie
         en utilisant un profil d'exportation spécifique.
-        
-        Doit lever une 'RenderError' en cas d'échec.
         """
         pass

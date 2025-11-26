@@ -24,20 +24,18 @@ class EditorWindow(QWidget):
         self.resize(1280, 720)
 
         
-        # back
         self.store = store
         self.exporter = export_service
 
         self.media = MediaController(self)        # player 1-fichier
         self.seq = SequencePlayer(self.media, self.store, self) 
 
-        # centre vidéo (canvas)
         self.canvas = VideoCanvas()
 
         self.controls = PlayerControls()
         self.controls.set_media(self.seq)
 
-        self.timeline_view = TimelineView(self)   # Timeline unique à 3 pistes
+        self.timeline_view = TimelineView(self) 
 
         # overlays: appliquer les déplacements/redimensions uniquement en fin de drag
         self.timeline_view.imageOverlayChangedRequested.connect(self._apply_image_move_resize)
@@ -63,14 +61,12 @@ class EditorWindow(QWidget):
         center_col_layout.addWidget(self.canvas, stretch=1)
         center_col_layout.addWidget(self.controls)
 
-        # --- Splitter horizontal principal (Assets | Canvas | Inspector) ---
         top_splitter = QSplitter(Qt.Horizontal, self)
         top_splitter.addWidget(self.assets)
         top_splitter.addWidget(self.center_container)
         top_splitter.addWidget(self.inspector)
         top_splitter.setSizes([220, 820, 240])
 
-        # --- Splitter vertical (haut/bas) ---
         main_splitter = QSplitter(Qt.Vertical, self)
         main_splitter.addWidget(top_splitter)
         main_splitter.addWidget(self.timeline_view)
@@ -82,7 +78,6 @@ class EditorWindow(QWidget):
         root.setSpacing(6)
         root.addWidget(main_splitter)
 
-        # --- Connexions principales (via le SÉQUENCEUR) ---
         self.seq.frameImageAvailable.connect(self.canvas.set_frame)
         self.seq.positionChanged.connect(self.canvas.set_playhead_ms)
         self.canvas.set_project(self.store.project())
@@ -92,36 +87,30 @@ class EditorWindow(QWidget):
         self.seq.positionChanged.connect(self.timeline_view.set_playhead_ms)
         self.controls.zoomChanged.connect(self.timeline_view.set_zoom)
 
-        # --- DnD depuis timeline ---
         self.timeline_view.clipDropRequested.connect(self._add_video_clip_at_seconds)
         self.timeline_view.imageDropRequested.connect(self.on_timeline_drop_image)
 
-        # --- DnD / actions depuis le panneau assets ---
         if hasattr(self.assets, "addImageRequested"):
             self.assets.addImageRequested.connect(self._add_image_at_playhead)
         if hasattr(self.assets, "addVideoRequested"):
             self.assets.addVideoRequested.connect(self._add_video_at_playhead)
 
-        # --- Erreurs et timecodes (via le séquenceur) ---
         self.seq.errorOccurred.connect(self._on_media_error)
-        self.seq.durationChanged.connect(self.controls.set_duration)   # durée totale séquence
-        self.seq.positionChanged.connect(self.controls.set_position)   # position globale
+        self.seq.durationChanged.connect(self.controls.set_duration)
+        self.seq.positionChanged.connect(self.controls.set_position)
 
         # --- Export ---
         self.controls.exportRequested.connect(self._export)
 
-        # --- Bouton ✂ Couper ---
         if hasattr(self.controls, "splitRequested"):
             self.controls.splitRequested.connect(self.split_current_clip)
 
-        # --- Sélection de segment (clic sur timeline) + suppression ---
         self._selected_segment = None  # tuple (index, start_s, duration_s) ou None
         self.timeline_view.segmentSelected.connect(self._on_segment_selected)
         self.timeline_view.segmentCleared.connect(self._on_segment_cleared)
         if hasattr(self.controls, "deleteSelectionCloseRequested"):
             self.controls.deleteSelectionCloseRequested.connect(self._delete_selected_segment)
 
-        # --- Inspector ↔ Store ---
         self.inspector.filtersChanged.connect(self._on_filters_changed)
         self.inspector.setTitleStartRequested.connect(self._apply_title_start_from_playhead)
         self.inspector.setTitleEndRequested.connect(self._apply_title_end_from_playhead)
@@ -136,17 +125,13 @@ class EditorWindow(QWidget):
         if hasattr(self.inspector, "titleTextChanged"):
             self.inspector.titleTextChanged.connect(self.store.update_last_overlay_text)
 
-        # --- Store → UI ---
-        # IMPORTANT : un seul point d'entrée pour refresh ET reset de la sélection.
         self.store.overlayChanged.connect(self._on_store_clips_changed)
         self.store.clipsChanged.connect(self._on_store_clips_changed)
 
-        # --- Initialisation ---
         self._on_store_clips_changed()
 
         # resize d’un clip vidéo (timeline → store)
         self.timeline_view.clipResized.connect(self._on_clip_resized)
-        # drag/resize d’overlays : on applique au relâchement
         self.timeline_view.imageOverlayChangedRequested.connect(self._apply_image_move_resize)
         self.timeline_view.textOverlayChangedRequested.connect(self._apply_text_move_resize)
 
@@ -158,7 +143,6 @@ class EditorWindow(QWidget):
         self.store.overlayChanged.connect(self._refresh_overlay)
         self._refresh_overlay()
 
-    # ----- actions -----
     def _open_file(self):
         start_dir = str(Path.cwd() / "assets")
         f, _ = QFileDialog.getOpenFileName(
@@ -168,7 +152,6 @@ class EditorWindow(QWidget):
         if not f: return
         self.media.load(QUrl.fromLocalFile(f))
         self.media.play()
-        # provisoire: clip unique avec une durée par défaut (ajustable après)
         self.store.set_clip(f, duration_s=5.0)
 
     # ---------- Export ----------
@@ -243,10 +226,8 @@ class EditorWindow(QWidget):
         self.timeline_view.set_tracks(video_items, image_items, text_items)
 
         # --- Durée totale incluant overlays ---
-        # 1) durée des clips vidéo (ms)
         video_ms = total_sequence_duration_ms(proj.clips)
 
-        # 2) fin max des overlays (images + textes) -> ms
         end_images_s = max([o.end for o in proj.image_overlays], default=0.0)
         end_texts_s  = max([ov.end for ov in proj.text_overlays], default=0.0)
         overlays_ms = int(max(end_images_s, end_texts_s) * 1000.0)
@@ -292,11 +273,10 @@ class EditorWindow(QWidget):
                 self.store.add_video_clip_at(path, place_s, duration_s=dur_s)
             else:
                 self.store.add_video_clip(path, in_s=0.0, out_s=dur_s, duration=dur_s)
-            # la connexion clipsChanged déclenchera _on_store_clips_changed
 
         tmp.errorOccurred.connect(_on_err)
         tmp.durationChanged.connect(_on_dur)
-        tmp.load(QUrl.fromLocalFile(path))  # charge en silencieux juste pour récupérer la durée
+        tmp.load(QUrl.fromLocalFile(path))  
 
     def _add_video_clip_at_seconds(self, path: str, start_s: float):
         """Ajoute un clip vidéo AU TEMPS demandé avec sa vraie durée."""
@@ -340,11 +320,9 @@ class EditorWindow(QWidget):
         Coupe exactement à la dernière position cliquée dans la timeline,
         sinon au niveau du playhead si aucun clic n'a été mémorisé.
         """
-        # Immobilise le playhead pendant l'opération
         if hasattr(self.seq, "pause"):
             self.seq.pause()
 
-        # Récupère la dernière position cliquée (timeline) sinon le playhead
         t_click = None
         if hasattr(self.timeline_view, "last_clicked_seconds"):
             t_click = self.timeline_view.last_clicked_seconds()
@@ -353,12 +331,10 @@ class EditorWindow(QWidget):
         idx, clip, local = self.store.clip_at_global_time(t_s)
         if idx >= 0 and clip is not None:
             if not self.store.split_clip_at(idx, local):
-                # Si exactement sur une frontière, pousse d’un epsilon
                 eps = 1e-6
                 idx, clip, local = self.store.clip_at_global_time(t_s + eps)
                 self.store.split_clip_at(idx, local)
 
-            # Nettoie la dernière position de clic pour éviter tout "fantôme"
             if hasattr(self.timeline_view, "clear_last_click"):
                 self.timeline_view.clear_last_click()
             return
@@ -457,8 +433,6 @@ class EditorWindow(QWidget):
         self._prompt_for_project() 
         self._refresh_overlay()
         self.setWindowTitle(f"Luminare — {self.store.project().name}")
-
-        # Ajouter des titres
 
     def _add_title_at_playhead(self, text: str):
         """Ajoute un titre à la position du playhead, durée par défaut 3s."""

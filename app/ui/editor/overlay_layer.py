@@ -1,4 +1,3 @@
-# app/ui/overlay_layer.py
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
 from PySide6.QtWidgets import QWidget

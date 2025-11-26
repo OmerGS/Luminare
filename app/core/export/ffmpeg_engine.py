@@ -28,18 +28,14 @@ class FfmpegRenderEngine(IRenderEngine):
             if not videos:
                 raise RenderError("Le projet est vide, aucun clip à exporter.")
 
-            # Concat
             concat = ffmpeg.concat(*[x for pair in zip(videos, audios) for x in pair],
                                    v=1, a=1).node
             vcat, acat = concat[0], concat[1]
 
-            # Filtres vidéo globaux
             v = self._build_filter_chain(vcat, project.filters, w, h)
 
-            # Overlays de texte
             v = self._apply_text_overlays(v, project.text_overlays)
 
-            # Audio
             a = acat
             if project.audio_normalize:
                 a = a.filter('loudnorm', i='-16', tp='-1.5', lra='11')

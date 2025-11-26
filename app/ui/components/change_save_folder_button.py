@@ -1,4 +1,3 @@
-# app/ui/components/change_save_folder_button.py
 from PySide6.QtWidgets import QPushButton
 from app.ui import styles
 

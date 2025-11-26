@@ -52,10 +52,8 @@ def display_project(proj):
         print("  Aucun overlay trouvé.")
 
 if __name__ == "__main__":
-    # 🔹 Affiche le nombre total de projets
     print(f"\nNombre total de projets : {ProjectAPI.get_save_count()}")
 
-    # 🔹 Liste les projets disponibles
     files = list_lmprj_files()
     if not files:
         print(f"\nAucun fichier .lmprj trouvé dans {LMPRJChunkedSerializer.get_save_dir()}")
@@ -65,7 +63,6 @@ if __name__ == "__main__":
     for idx, filename in enumerate(files, 1):
         print(f"{idx}. {filename}")
 
-    # 🔹 Choix du projet à charger
     while True:
         try:
             choice = int(input(f"\nChoisis un fichier à charger (1-{len(files)}): "))
@@ -78,16 +75,13 @@ if __name__ == "__main__":
 
     selected_file = files[choice - 1]
 
-    # 🔹 Chargement du projet avec gestion des erreurs
     try:
         loaded_proj = ProjectAPI.load(selected_file)
     except Exception as e:
         print(f"Impossible de charger le projet : {e}")
         exit()
 
-    # 🔹 Affichage complet
     display_project(loaded_proj)
 
-    # 🔹 Nombre de clips
     clip_count = len(loaded_proj.clips)
     print(f"\nCe projet contient {clip_count} clip(s).")

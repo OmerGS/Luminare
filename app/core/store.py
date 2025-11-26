@@ -1,8 +1,5 @@
-# app/core/store.py
-
 from typing import Optional
 from PySide6.QtCore import QObject, Signal, QTimer
-# Mise à jour de l'import : Clip est maintenant la seule classe de clip
 from core.project import Project, TextOverlay, Filters, ImageOverlay, Clip
 
 
@@ -33,35 +30,16 @@ class Store(QObject):
     def project(self) -> Project:
         return self._project
 
-    # ==============================
-    # Helpers internes (clips vidéo)
-    # ==============================
-
     def _clip_effective_duration_s(self, clip: Clip) -> float:
-        """
-        Durée effective d'un clip en secondes.
-        On privilégie duration_s si présent > 0, sinon (out_s - in_s).
-        
-        NOTE: Utilise désormais l'attribut effectif_duration de la classe Clip pour simplifier.
-        Cependant, pour garder la logique manuelle de secours si l'objet n'est pas un Clip parfait,
-        on conserve la logique de la méthode (adaptée au nouveau modèle Clip).
-        """
         try:
-            # Idéalement, on utiliserait clip.effective_duration
-            # Mais la logique manuelle ci-dessous est aussi correcte pour le nouveau Clip
             d = getattr(clip, "duration_s", None)
             if d is not None and float(d) > 0.0:
                 return float(d)
-            # Puisque Clip est le modèle unifié (ancien VideoClip), in_s/out_s sont toujours là.
             return max(0.0, float(getattr(clip, "out_s", 0.0)) - float(getattr(clip, "in_s", 0.0)))
         except Exception:
             return 0.0
 
     def _clip_bounds(self):
-        """
-        Retourne une liste [(start_s, end_s, idx)] des clips vidéo,
-        avec start/end cumulatifs (séquence sans trous).
-        """
         bounds = []
         acc = 0.0
         for i, c in enumerate(self._project.clips):
@@ -102,22 +80,15 @@ class Store(QObject):
         # sécurité : si t dépasse, pointer fin du dernier clip
         return len(clips) - 1, clips[-1], self._clip_effective_duration_s(clips[-1])
 
-    # =========================
-    # Opérations sur les clips
-    # =========================
-
     def set_clip(self, path: str, duration_s: float):
         """Remplace l’unique clip par un Clip 'nouveau modèle'."""
         dur = max(0.1, float(duration_s))
-        # Utilisation de Clip (anciennement VideoClip)
         self._project.clips = [Clip(path=path, in_s=0.0, out_s=dur, duration_s=dur)]
         self.clipsChanged.emit()
         self.changed.emit()
 
     def add_video_clip(self, path: str, in_s: float = 0.0, out_s: float = 0.0, duration: float = 0.0):
-        """Ajoute un clip vidéo à la fin de la séquence."""
         dur = duration if duration > 0 else max(0.0, out_s - in_s)
-        # Utilisation de Clip (anciennement VideoClip)
         clip = Clip(path=path, in_s=in_s, out_s=(in_s + dur), duration_s=dur)
         self._project.clips.append(clip)
         self.clipsChanged.emit()
@@ -143,12 +114,9 @@ class Store(QObject):
         dur = self._clip_effective_duration_s(c)
         cut = float(max(0.0, min(local_s, dur)))
 
-        # pas de split si bord
         if cut <= 0.0 or cut >= dur:
             return False
 
-        # Créer un "right" propre en recopiant les champs utiles
-        # Utilisation de Clip (anciennement VideoClip)
         right = Clip(
             path=c.path,
             in_s=getattr(c, "in_s", 0.0),
@@ -156,11 +124,9 @@ class Store(QObject):
             duration_s=getattr(c, "duration_s", dur),
         )
 
-        # Ajuster le gauche
         c.duration_s = cut
         c.out_s = float(getattr(c, "in_s", 0.0)) + c.duration_s
 
-        # Ajuster le droit
         right.in_s = float(c.out_s)
         right.duration_s = max(0.0, dur - cut)
         right.out_s = float(right.in_s) + right.duration_s
@@ -182,17 +148,10 @@ class Store(QObject):
             self.changed.emit()
 
     def add_video_clip_at(self, path: str, start_s: float, duration_s: float = 5.0):
-        """
-        Insère un nouveau clip vidéo à l'instant global `start_s`.
-        - Si `start_s` tombe au milieu d'un clip existant, on split, puis on insère entre les deux moitiés.
-        - Si `start_s` est après la fin, on append à la fin.
-        """
         start_s = max(0.0, float(start_s))
         duration_s = max(0.0, float(duration_s))
-        # Utilisation de Clip (anciennement VideoClip)
         newc = Clip(path=path, in_s=0.0, out_s=duration_s, duration_s=duration_s)
 
-        # Séquence vide
         if not self._project.clips:
             self._project.clips.append(newc)
             self.clipsChanged.emit()
@@ -202,39 +161,28 @@ class Store(QObject):
         idx, c, local = self.clip_at_global_time(start_s)
 
         if idx == -1 or c is None:
-            # Au-delà de la fin
             self._project.clips.append(newc)
             self.clipsChanged.emit()
             self.changed.emit()
             return newc
 
-        # bornes du clip courant
-        # Ces attributs sont garantis d'exister sur le nouveau Clip
         c_start = float(getattr(c, "in_s", 0.0))
         c_end = float(getattr(c, "out_s", c_start + self._clip_effective_duration_s(c)))
         EPS = 1e-6
 
         if abs(local - 0.0) < EPS:
-            # tout début du clip courant -> insérer AVANT
             self._project.clips.insert(idx, newc)
         elif abs(local - self._clip_effective_duration_s(c)) < EPS:
-            # fin du clip courant -> insérer APRÈS
             self._project.clips.insert(idx + 1, newc)
         else:
-            # au milieu -> split, puis insérer entre gauche (idx) et droite (idx+1)
             if self.split_clip_at(idx, local):
                 self._project.clips.insert(idx + 1, newc)
             else:
-                # fallback (ne devrait pas arriver) : append
                 self._project.clips.append(newc)
 
         self.clipsChanged.emit()
         self.changed.emit()
         return newc
-
-    # =========================
-    # Suppression d’un segment
-    # =========================
 
     def delete_segment(self, start_s: float, end_s: float, close_gap: bool = True):
         """
@@ -265,7 +213,6 @@ class Store(QObject):
         # 2) bornes absolues FRAÎCHES
         bounds = self._clip_bounds()
 
-        # trouver la plage d'indices entièrement contenue dans [a,b)
         ia = None
         ib = None
         for s0, s1, i in bounds:
@@ -275,21 +222,15 @@ class Store(QObject):
                 ib = i
 
         if ia is None or ib is None or ia > ib:
-            # rien à supprimer (par ex. si a/b tombent au milieu du même clip et que splits n'ont rien créé)
             return
 
-        # 3) suppression par tranche d'indices
         del clips[ia:ib + 1]
 
-        # close_gap=False non supporté (modèle séquentiel) — ignoré
         if hasattr(self, "clipsChanged"):
             self.clipsChanged.emit()
         if hasattr(self, "changed"):
             self.changed.emit()
 
-    # ======================
-    # Overlays & filtres
-    # ======================
     def set_project_name(self, name: str):
         """Définit un nouveau nom pour le projet en cours."""
         if name:
@@ -366,10 +307,6 @@ class Store(QObject):
             self.changed.emit()
         self.overlayChanged.emit(); self.changed.emit()
     
-    # NOTE: Les méthodes set_last_overlay_start/end et set_filters sont dupliquées
-    # dans le code original fourni. J'ai gardé les premières versions complètes et 
-    # laissé les secondes qui appellent les signaux pour compatibilité, mais elles sont redondantes.
-
     def start_auto_save(self, interval_ms: int = 30000):
         """Démarre une sauvegarde automatique toutes les interval_ms millisecondes."""
         self._auto_save_timer = QTimer(self)

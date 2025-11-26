@@ -1,4 +1,3 @@
-# app/ui/editor/components/import_button.py
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtGui import QIcon
 

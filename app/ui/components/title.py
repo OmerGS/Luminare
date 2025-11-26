@@ -1,4 +1,3 @@
-# app/ui/components/title.py
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel
 from app.ui import styles

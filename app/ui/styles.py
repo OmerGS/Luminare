@@ -113,7 +113,6 @@ THEME_BUTTON="""
     }    
 """
 
-# Modifié pour un fond sombre
 WINDOW_STYLE = """
     QWidget {
         background-color: #1f1f1f;

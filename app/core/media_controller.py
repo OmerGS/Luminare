@@ -8,7 +8,7 @@ class MediaController(QObject):
     durationChanged = Signal(int)
     positionChanged = Signal(int)
     errorOccurred = Signal(str)
-    frameImageAvailable = Signal(QImage)   # ← frame vidéo (image) pour le canvas
+    frameImageAvailable = Signal(QImage)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -17,7 +17,6 @@ class MediaController(QObject):
         self._player.setAudioOutput(self._audio)
         self._current_url = None
 
-        # vidéo
         self._sink = QVideoSink(self)
         self._player.setVideoOutput(self._sink)
         self._sink.videoFrameChanged.connect(self._on_frame)
@@ -26,15 +25,13 @@ class MediaController(QObject):
         self._player.positionChanged.connect(lambda p: self.positionChanged.emit(int(p or 0)))
         self._player.errorOccurred.connect(lambda e, t="": self.errorOccurred.emit(f"{e}: {t}" if e else ""))
 
-    # ---- video frames -> image
     def _on_frame(self, frame):
         if not frame.isValid():
             return
-        img = frame.toImage()  # QImage
+        img = frame.toImage() 
         if not img.isNull():
             self.frameImageAvailable.emit(img)
 
-    # ---- control
     def load(self, url: QUrl):
         self._current_url = url
         self._player.setSource(url)
@@ -57,7 +54,6 @@ class MediaController(QObject):
 
         self.seek_ms(new_pos_ms)
 
-    # info
     def duration_ms(self) -> int: return int(self._player.duration() or 0)
     def position_ms(self) -> int: return int(self._player.position() or 0)
     def current_path(self) -> str:

@@ -1,4 +1,3 @@
-# ui/editor/inspector.py
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -7,15 +6,13 @@ from PySide6.QtWidgets import (
 from typing import Optional
 
 class Inspector(QWidget):
-    # ---- Signaux "Titres"
-    addTitleRequested = Signal(str)        # texte du champ -> ajouter un titre
-    removeLastTitleRequested = Signal()    # supprimer le dernier titre
-    setTitleStartRequested = Signal()      # "Début = curseur"
-    setTitleEndRequested = Signal()        # "Fin = curseur"
-    titleTextChanged = Signal(str)         # champ texte modifié (maj dernier titre)
+    addTitleRequested = Signal(str)
+    removeLastTitleRequested = Signal()
+    setTitleStartRequested = Signal()
+    setTitleEndRequested = Signal()
+    titleTextChanged = Signal(str)
 
-    # ---- Signaux "Filtres"
-    filtersChanged = Signal(float, float, float, bool)  # b, c, s, vignette
+    filtersChanged = Signal(float, float, float, bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -27,7 +24,6 @@ class Inspector(QWidget):
         root.setContentsMargins(6, 6, 6, 6)
         root.setSpacing(8)
 
-        # ---------- Bloc Titres ----------
         gb_titles = QGroupBox("Titres")
         v = QVBoxLayout(gb_titles)
 
@@ -50,7 +46,6 @@ class Inspector(QWidget):
 
         root.addWidget(gb_titles)
 
-        # ---------- Bloc Filtres ----------
         gb_filters = QGroupBox("Couleur (export)")
         fv = QVBoxLayout(gb_filters)
 
@@ -77,15 +72,12 @@ class Inspector(QWidget):
         root.addWidget(gb_filters)
         root.addStretch(1)
 
-        # ---------- Connexions ----------
-        # Titres
         self.btn_add_title.clicked.connect(lambda: self.addTitleRequested.emit(self.edt_title.text()))
         self.btn_del_last.clicked.connect(self.removeLastTitleRequested.emit)
         self.btn_start.clicked.connect(self.setTitleStartRequested.emit)
         self.btn_end.clicked.connect(self.setTitleEndRequested.emit)
         self.edt_title.textEdited.connect(self.titleTextChanged.emit)
 
-        # Filtres (toutes modifs émettent)
         def emit_filters():
             self.filtersChanged.emit(
                 float(self.sp_brightness.value()),
@@ -99,11 +91,7 @@ class Inspector(QWidget):
         self.cb_vignette.toggled.connect(lambda *_: emit_filters())
     
     def set_selected_overlay(self, overlay: Optional[object]):
-        """
-        Met à jour le champ texte quand un overlay (titre) est sélectionné sur la vidéo.
-        """
         self._selected_overlay = overlay
-        # éviter d’émettre titleTextChanged pendant qu’on remplit le champ
         self.edt_title.blockSignals(True)
         self.edt_title.setText(getattr(overlay, "text", "") if overlay else "")
         self.edt_title.blockSignals(False)
